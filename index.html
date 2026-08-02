@@ -106,19 +106,18 @@
   }
   .field textarea{resize:vertical;min-height:56px;}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-  .stage-pills{display:flex;flex-wrap:wrap;gap:7px;}
-  .stage-pill{
-    padding:7px 13px;border-radius:20px;border:2px solid var(--line);background:var(--cream);
-    color:var(--navy-soft);font-size:12px;font-family:var(--font-display);font-weight:700;
-    cursor:pointer;transition:.15s;
-  }
-  .stage-pill:hover{border-color:var(--indigo);}
-  .stage-pill:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;}
-  .stage-pill[data-stage="rough"].active{background:var(--orange);border-color:var(--orange);color:var(--navy);}
-  .stage-pill[data-stage="sound"].active{background:var(--pink);border-color:var(--pink);color:var(--navy);}
-  .stage-pill[data-stage="color"].active{background:var(--teal);border-color:var(--teal);color:#fff;}
-  .stage-pill[data-stage="review"].active{background:var(--lime);border-color:var(--lime);color:var(--navy);}
-  .stage-pill[data-stage="delivered"].active{background:var(--indigo);border-color:var(--indigo);color:#fff;}
+
+  .tag-color-orange{background:var(--orange-tint);color:#B8460B;}
+  .tag-color-pink{background:var(--pink-tint);color:#C22E96;}
+  .tag-color-teal{background:var(--teal-tint);color:#0E7A56;}
+  .tag-color-lime{background:var(--lime-tint);color:#5C8712;}
+  .tag-color-indigo{background:var(--indigo-tint);color:var(--indigo);}
+
+  .seg.on.seg-color-orange{background:var(--orange);}
+  .seg.on.seg-color-pink{background:var(--pink);}
+  .seg.on.seg-color-teal{background:var(--teal);}
+  .seg.on.seg-color-lime{background:var(--lime);}
+  .seg.on.seg-color-indigo{background:var(--indigo);}
 
   .dur-row{display:flex;gap:10px;align-items:center;}
 
@@ -166,11 +165,6 @@
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .feed-stage{font-size:10px;font-family:var(--font-display);font-weight:700;padding:3px 9px;
     border-radius:12px;flex:none;white-space:nowrap;}
-  .feed-stage.tag-stage-rough{background:var(--orange-tint);color:#B8460B;}
-  .feed-stage.tag-stage-sound{background:var(--pink-tint);color:#C22E96;}
-  .feed-stage.tag-stage-color{background:var(--teal-tint);color:#0E7A56;}
-  .feed-stage.tag-stage-review{background:var(--lime-tint);color:#5C8712;}
-  .feed-stage.tag-stage-delivered{background:var(--indigo-tint);color:var(--indigo);}
   .feed-dur{font-family:var(--font-display);font-weight:700;color:var(--navy);width:48px;flex:none;text-align:right;}
   .feed-notes{color:var(--navy-soft);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;}
   .feed-del{background:none;border:none;color:var(--navy-faint);cursor:pointer;font-size:16px;
@@ -180,6 +174,20 @@
 
   /* ---------- dashboard ---------- */
   .period-toggle{display:flex;gap:6px;margin-bottom:16px;}
+
+  #dash-video-select{margin-bottom:4px;}
+  .video-detail-head{display:flex;justify-content:space-between;align-items:baseline;
+    margin:16px 0 4px;flex-wrap:wrap;gap:6px;}
+  .video-detail-title{font-family:var(--font-display);font-weight:800;font-size:16px;}
+  .video-detail-total{font-family:var(--font-display);font-weight:700;color:var(--indigo);
+    font-size:13px;white-space:nowrap;}
+  .vh-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);
+    font-size:12px;}
+  .vh-row:last-child{border-bottom:none;}
+  .vh-date{font-family:var(--font-body);color:var(--navy-faint);width:64px;flex:none;}
+  .vh-editor{font-weight:700;width:90px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .vh-dur{font-family:var(--font-display);font-weight:700;color:var(--navy);width:48px;flex:none;text-align:right;}
+  .vh-notes{color:var(--navy-soft);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .period-btn{
     padding:7px 14px;border-radius:9px;border:2px solid var(--navy);background:var(--card);
     color:var(--navy-soft);font-family:var(--font-display);font-weight:700;font-size:12px;cursor:pointer;
@@ -194,11 +202,6 @@
   .video-total{font-family:var(--font-display);color:var(--indigo);font-size:14px;font-weight:800;white-space:nowrap;}
   .segbar{display:flex;gap:3px;margin-bottom:6px;}
   .seg{flex:1;height:7px;border-radius:3px;background:var(--line);}
-  .seg.on.seg-rough{background:var(--orange);}
-  .seg.on.seg-sound{background:var(--pink);}
-  .seg.on.seg-color{background:var(--teal);}
-  .seg.on.seg-review{background:var(--lime);}
-  .seg.on.seg-delivered{background:var(--indigo);}
   .seg.current{animation:segpulse 1.8s infinite;}
   @keyframes segpulse{
     0%,100%{box-shadow:0 0 0 0 rgba(51,47,209,.5);}
@@ -322,8 +325,8 @@
         </div>
 
         <div class="field">
-          <label>Stage</label>
-          <div class="stage-pills" id="stage-pills"></div>
+          <label for="f-stage">Stage</label>
+          <select id="f-stage"></select>
         </div>
 
         <div class="field">
@@ -357,6 +360,14 @@
   </div>
 
   <div class="panel" id="panel-dashboard">
+    <div class="card">
+      <div class="card-head">Look up a video</div>
+      <select id="dash-video-select">
+        <option value="">Select a video…</option>
+      </select>
+      <div id="dash-video-detail"></div>
+    </div>
+
     <div class="period-toggle">
       <button class="period-btn active" data-period="today">TODAY</button>
       <button class="period-btn" data-period="week">LAST 7 DAYS</button>
@@ -391,13 +402,7 @@
 (function(){
   "use strict";
 
-  var STAGES = [
-    {id:'rough', label:'Rough Cut'},
-    {id:'sound', label:'Sound'},
-    {id:'color', label:'Color/Motion'},
-    {id:'review', label:'Review'},
-    {id:'delivered', label:'Delivered'}
-  ];
+  var STAGE_COLORS = ['orange', 'pink', 'teal', 'lime', 'indigo'];
   // Paste the "Web app" URL you get from deploying the Apps Script (ends in /exec)
   var SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbxlIwkJFbEWwKBEmnRWH7SUe3NkvpE2snxlKGZWBsRj2-LYa8kzm3Bm8VOl22iNDy2G/exec';
 
@@ -418,7 +423,7 @@
     }
   }; // local fallback only — the sheet seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', selectedStage: 'rough', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], activeTake: null, allActiveTakes: {}, timerInterval: null };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], activeTake: null, allActiveTakes: {}, timerInterval: null };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -477,9 +482,10 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   }
 
-  function stageLabel(id){
-    var s = STAGES.filter(function(x){ return x.id === id; })[0];
-    return s ? s.label : id;
+  function stageColorClass(name){
+    var idx = state.stages.indexOf(name);
+    if(idx < 0){ idx = 0; }
+    return STAGE_COLORS[idx % STAGE_COLORS.length];
   }
 
   /* ---------- storage (Google Sheets via Apps Script) ---------- */
@@ -530,6 +536,17 @@
     return postAction('setProjects', { projects: projects });
   }
 
+  function loadStages(){
+    var fallback = ['First Cut', 'B Rolls', 'Sound Design', 'Final Video'];
+    return getAction('getStages')
+      .then(function(d){ return (d && d.stages && d.stages.length) ? d.stages : fallback; })
+      .catch(function(){ return fallback; });
+  }
+
+  function persistStages(stages){
+    return postAction('setStages', { stages: stages });
+  }
+
   function loadIdentity(){
     try{
       var raw = localStorage.getItem('ss_identity');
@@ -570,11 +587,8 @@
 
   /* ---------- form setup (rendered once, uncontrolled inputs) ---------- */
   function setupForm(){
-    var pillsWrap = document.getElementById('stage-pills');
-    pillsWrap.innerHTML = STAGES.map(function(s){
-      return '<button type="button" class="stage-pill'+(s.id===state.selectedStage?' active':'')+'" data-stage="'+s.id+'">'+escapeHtml(s.label)+'</button>';
-    }).join('');
     populateProjectSelect();
+    populateStageSelect();
   }
 
   function populateProjectSelect(selectedValue){
@@ -584,6 +598,15 @@
       return '<option value="'+escapeHtml(p)+'">'+escapeHtml(p)+'</option>';
     }).join('') + '<option value="__add_new__">+ Add new project…</option>';
     if(current && state.projects.indexOf(current) !== -1){ sel.value = current; }
+  }
+
+  function populateStageSelect(selectedValue){
+    var sel = document.getElementById('f-stage');
+    var current = selectedValue || sel.value;
+    sel.innerHTML = state.stages.map(function(s){
+      return '<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>';
+    }).join('') + '<option value="__add_new__">+ Add new stage…</option>';
+    if(current && state.stages.indexOf(current) !== -1){ sel.value = current; }
   }
 
   function refreshDatalists(){
@@ -635,7 +658,7 @@
         + '<div class="feed-time">'+timeStr+'</div>'
         + '<div class="feed-editor" title="'+escapeHtml(e.editor)+'">'+escapeHtml(e.editor)+'</div>'
         + '<div class="feed-video" title="'+escapeHtml(e.video)+' · '+escapeHtml(e.project||'')+'">'+videoLabel+'</div>'
-        + '<div class="feed-stage tag-stage-'+e.stage+'">'+escapeHtml(stageLabel(e.stage))+'</div>'
+        + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
         + '<div class="feed-dur">'+formatHM(e.hours)+'</div>'
         + '<div class="feed-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes)+'</div>'
         + '</div>';
@@ -643,12 +666,86 @@
   }
 
   /* ---------- dashboard ---------- */
+  /* ---------- video lookup ---------- */
+  function populateDashVideoSelect(){
+    var sel = document.getElementById('dash-video-select');
+    if(!sel) return;
+    var current = sel.value;
+    var videos = Array.from(new Set(state.entries.map(function(e){ return e.video; }))).sort();
+    sel.innerHTML = '<option value="">Select a video…</option>' + videos.map(function(v){
+      return '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>';
+    }).join('');
+    if(current && videos.indexOf(current) !== -1){
+      sel.value = current;
+      renderVideoDetail(current);
+    }
+  }
+
+  function renderVideoDetail(video){
+    var wrap = document.getElementById('dash-video-detail');
+    if(!wrap) return;
+    if(!video){ wrap.innerHTML = ''; return; }
+
+    var rows = state.entries.filter(function(e){ return e.video === video; })
+      .sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+
+    if(rows.length === 0){
+      wrap.innerHTML = '<div class="empty-state">No takes logged for this video yet.</div>';
+      return;
+    }
+
+    var totalHours = rows.reduce(function(s,e){ return s + e.hours; }, 0);
+    var project = rows[0].project || '';
+    var touched = new Set(rows.map(function(e){ return e.stage; }));
+    var furthestIdx = -1;
+    state.stages.forEach(function(name, i){ if(touched.has(name)) furthestIdx = i; });
+    var currentStage = furthestIdx >= 0 ? state.stages[furthestIdx] : '—';
+
+    var byEditor = {};
+    rows.forEach(function(e){
+      if(!byEditor[e.editor]){ byEditor[e.editor] = { hours: 0, count: 0 }; }
+      byEditor[e.editor].hours += e.hours;
+      byEditor[e.editor].count += 1;
+    });
+    var editorList = Object.keys(byEditor).map(function(name){
+      return { name: name, hours: byEditor[name].hours, count: byEditor[name].count };
+    }).sort(function(a,b){ return b.hours - a.hours; });
+
+    var html = '';
+    html += '<div class="video-detail-head">'
+      + '<div class="video-detail-title">' + escapeHtml(video) + (project ? ' <span style="color:var(--navy-faint);font-weight:600;font-size:13px;">· '+escapeHtml(project)+'</span>' : '') + '</div>'
+      + '<div class="video-detail-total">' + formatHM(totalHours) + ' total · ' + escapeHtml(currentStage) + '</div>'
+      + '</div>';
+
+    html += '<div class="editor-grid">' + editorList.map(function(ed){
+      return '<div class="editor-card">'
+        + '<div class="editor-name" title="'+escapeHtml(ed.name)+'">'+escapeHtml(ed.name)+'</div>'
+        + '<div class="editor-hours">'+formatHM(ed.hours)+'</div>'
+        + '<div class="editor-sub">'+ed.count+' take'+(ed.count===1?'':'s')+'</div>'
+        + '</div>';
+    }).join('') + '</div>';
+
+    html += '<div class="editor-row-sub" style="margin-top:14px;">Full history</div>';
+    html += rows.map(function(e){
+      var dateStr = formatDateLabel(e.date);
+      return '<div class="vh-row">'
+        + '<div class="vh-date">'+escapeHtml(dateStr)+'</div>'
+        + '<div class="vh-editor" title="'+escapeHtml(e.editor)+'">'+escapeHtml(e.editor)+'</div>'
+        + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
+        + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
+        + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
+        + '</div>';
+    }).join('');
+
+    wrap.innerHTML = html;
+  }
+
   function computeVideoStats(video){
     var all = state.entries.filter(function(e){ return e.video === video; });
     var totalHours = all.reduce(function(s,e){ return s + e.hours; }, 0);
     var touched = new Set(all.map(function(e){ return e.stage; }));
     var furthestIdx = -1;
-    STAGES.forEach(function(s, i){ if(touched.has(s.id)) furthestIdx = i; });
+    state.stages.forEach(function(name, i){ if(touched.has(name)) furthestIdx = i; });
     var contributors = Array.from(new Set(all.map(function(e){ return e.editor; })));
     var lastLoggedAt = all.reduce(function(m,e){ return e.loggedAt > m ? e.loggedAt : m; }, '');
     var project = all.length ? all[all.length-1].project : '';
@@ -708,12 +805,12 @@
       html += '<div class="empty-state">No videos touched in this period yet.</div>';
     } else {
       html += videoStats.map(function(s){
-        var segs = STAGES.map(function(st, i){
-          var cls = 'seg seg-' + st.id + (s.touched.has(st.id) ? ' on' : '') + (i === s.furthestIdx ? ' current' : '');
+        var segs = state.stages.map(function(name, i){
+          var cls = 'seg seg-color-' + stageColorClass(name) + (s.touched.has(name) ? ' on' : '') + (i === s.furthestIdx ? ' current' : '');
           return '<div class="'+cls+'"></div>';
         }).join('');
         var contrib = s.contributors.slice(0,3).join(', ') + (s.contributors.length > 3 ? ' +'+(s.contributors.length-3)+' more' : '');
-        var stageTxt = s.furthestIdx >= 0 ? stageLabel(STAGES[s.furthestIdx].id) : '—';
+        var stageTxt = s.furthestIdx >= 0 ? state.stages[s.furthestIdx] : '—';
         var videoTitle = escapeHtml(s.video) + (s.project ? ' <span style="color:var(--navy-faint);font-weight:600;font-size:12px;">· '+escapeHtml(s.project)+'</span>' : '');
         return '<div class="video-row">'
           + '<div class="video-top"><div class="video-name">'+videoTitle+'</div><div class="video-total">'+formatHM(s.totalHours)+'</div></div>'
@@ -788,7 +885,7 @@
     document.getElementById('take-active').style.display = 'block';
     var at = state.activeTake;
     document.getElementById('active-take-summary').innerHTML =
-      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(stageLabel(at.stage));
+      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage);
     document.getElementById('f-notes-active').value = at.notes || '';
     tickTimer();
     if(state.timerInterval){ clearInterval(state.timerInterval); }
@@ -806,6 +903,7 @@
     var editor = document.getElementById('f-editor').value.trim();
     var video = document.getElementById('f-video').value.trim();
     var project = document.getElementById('f-project').value;
+    var stage = document.getElementById('f-stage').value;
     var notes = document.getElementById('f-notes').value.trim();
     var errEl = document.getElementById('form-error');
     errEl.textContent = '';
@@ -818,11 +916,15 @@
       errEl.textContent = 'Pick a project first.';
       return;
     }
+    if(!stage || stage === '__add_new__'){
+      errEl.textContent = 'Pick a stage first.';
+      return;
+    }
 
     var take = {
       video: video,
       project: project,
-      stage: state.selectedStage,
+      stage: stage,
       notes: notes,
       startedAt: new Date().toISOString()
     };
@@ -890,7 +992,8 @@
       });
     }).then(function(){
       var newLocks = Object.assign({}, state.locks);
-      if(entry.stage === 'delivered'){
+      var isFinalStage = state.stages.length > 0 && entry.stage === state.stages[state.stages.length - 1];
+      if(isFinalStage){
         delete newLocks[entry.video];
       } else {
         newLocks[entry.video] = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
@@ -1008,15 +1111,6 @@
     var periodBtn = e.target.closest('[data-period]');
     if(periodBtn){ setPeriod(periodBtn.getAttribute('data-period')); return; }
 
-    var stagePill = e.target.closest('[data-stage]');
-    if(stagePill){
-      state.selectedStage = stagePill.getAttribute('data-stage');
-      document.querySelectorAll('.stage-pill').forEach(function(p){
-        p.classList.toggle('active', p === stagePill);
-      });
-      return;
-    }
-
     var endBtn = e.target.closest('#end-btn');
     if(endBtn){ endTake(); return; }
   });
@@ -1043,6 +1137,24 @@
           populateProjectSelect(state.projects[0] || '');
         }
       }
+    }
+    if(e.target && e.target.id === 'f-stage'){
+      if(e.target.value === '__add_new__'){
+        var stageName = window.prompt('New stage name:');
+        stageName = stageName ? stageName.trim() : '';
+        if(stageName && state.stages.indexOf(stageName) === -1){
+          var updatedStages = state.stages.concat([stageName]);
+          persistStages(updatedStages).then(function(){
+            state.stages = updatedStages;
+            populateStageSelect(stageName);
+          });
+        } else {
+          populateStageSelect(state.stages[0] || '');
+        }
+      }
+    }
+    if(e.target && e.target.id === 'dash-video-select'){
+      renderVideoDetail(e.target.value);
     }
   });
 
@@ -1093,7 +1205,10 @@
       state.loading = false;
       refreshDatalists();
       renderFeed();
-      if(state.activeTab === 'dashboard') renderDashboard();
+      if(state.activeTab === 'dashboard'){
+        renderDashboard();
+        populateDashVideoSelect();
+      }
     });
     loadLocks().then(function(locks){
       state.locks = locks;
@@ -1102,6 +1217,10 @@
     loadProjects().then(function(projects){
       state.projects = projects;
       populateProjectSelect();
+    });
+    loadStages().then(function(stages){
+      state.stages = stages;
+      populateStageSelect();
     });
     if(state.identity.role === 'editor'){
       loadActiveTakes().then(function(activeTakes){
