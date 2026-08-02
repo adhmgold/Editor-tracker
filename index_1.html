@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor Log — Science Street</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#F5F2E8;
+    --cream-deep:#EDE7D3;
+    --card:#FFFFFF;
+    --line:#E3DCC6;
+    --navy:#14202E;
+    --navy-soft:#4B5A68;
+    --navy-faint:#8D96A0;
+    --indigo:#332FD1;
+    --indigo-deep:#2620A8;
+    --indigo-tint:#E9E8FB;
+    --yellow:#FFC700;
+    --yellow-deep:#E0AE00;
+    --red:#F2003C;
+    --red-tint:#FCE1E7;
+    --teal:#0E9A6C;
+    --teal-tint:#DEF3EA;
+    --orange:#FF6A1F;
+    --orange-tint:#FFE6D8;
+    --pink:#FF5FC4;
+    --pink-tint:#FFE3F6;
+    --lime:#8FCB1F;
+    --lime-tint:#EFF7DA;
+    --font-display:'Cairo',sans-serif;
+    --font-body:'Inter',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--cream);
+    background-image:radial-gradient(var(--line) 1px, transparent 1px);
+    background-size:22px 22px;
+    color:var(--navy);
+    font-family:var(--font-body);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{max-width:920px;margin:0 auto;padding:20px 16px 60px;}
+
+  /* ---------- header (street-sign) ---------- */
+  .slate{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px 22px;background:var(--indigo);border:3px solid var(--navy);
+    border-radius:16px;margin-bottom:18px;position:relative;
+    box-shadow:0 4px 0 var(--navy);
+  }
+  .slate::before,.slate::after{
+    content:"";position:absolute;top:9px;width:9px;height:9px;border-radius:50%;
+    background:var(--cream);border:2px solid var(--navy);
+  }
+  .slate::before{left:9px;}
+  .slate::after{right:9px;}
+  .slate-left{display:flex;align-items:center;gap:12px;}
+  .slate-title{font-family:var(--font-display);font-weight:800;font-size:22px;
+    color:var(--yellow);letter-spacing:.01em;line-height:1.15;}
+  .slate-sub{font-family:var(--font-display);font-weight:700;font-size:12px;
+    color:#fff;letter-spacing:.04em;margin-top:2px;text-transform:uppercase;}
+  .slate-tagline{font-size:11px;color:#C9C6F7;margin-top:3px;font-style:italic;}
+  .slate-clock{font-family:var(--font-body);font-weight:600;font-size:13px;color:#fff;
+    white-space:nowrap;background:rgba(255,255,255,.14);padding:5px 10px;border-radius:8px;}
+
+  /* ---------- tabs ---------- */
+  .tabs{display:flex;gap:6px;margin-bottom:16px;background:var(--card);
+    border:2px solid var(--navy);border-radius:12px;padding:4px;}
+  .tab-btn{
+    flex:1;padding:10px 10px;border:none;background:transparent;color:var(--navy-soft);
+    font-family:var(--font-display);font-size:13px;letter-spacing:.02em;font-weight:800;
+    border-radius:9px;cursor:pointer;transition:background .15s,color .15s;
+  }
+  .tab-btn.active{background:var(--yellow);color:var(--navy);}
+  .tab-btn:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;}
+  .tab-btn:hover:not(.active){color:var(--navy);}
+
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  .card{background:var(--card);border:2px solid var(--navy);border-radius:16px;
+    padding:20px;margin-bottom:16px;box-shadow:0 3px 0 var(--line);}
+  .card-head{font-family:var(--font-display);font-size:14px;letter-spacing:.01em;color:var(--navy);
+    margin-bottom:14px;font-weight:800;}
+
+  /* ---------- form ---------- */
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:11px;font-family:var(--font-display);color:var(--navy-soft);
+    letter-spacing:.03em;margin-bottom:6px;text-transform:uppercase;font-weight:700;}
+  .field input[type=text],.field input[type=date],.field input[type=password],
+  .field textarea,.field select{
+    width:100%;background:var(--cream);border:2px solid var(--line);color:var(--navy);
+    padding:9px 12px;border-radius:9px;font-family:var(--font-body);font-size:14px;
+  }
+  .field input:focus-visible,.field textarea:focus-visible,.field select:focus-visible{
+    outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo);
+  }
+  .field textarea{resize:vertical;min-height:56px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .stage-pills{display:flex;flex-wrap:wrap;gap:7px;}
+  .stage-pill{
+    padding:7px 13px;border-radius:20px;border:2px solid var(--line);background:var(--cream);
+    color:var(--navy-soft);font-size:12px;font-family:var(--font-display);font-weight:700;
+    cursor:pointer;transition:.15s;
+  }
+  .stage-pill:hover{border-color:var(--indigo);}
+  .stage-pill:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;}
+  .stage-pill[data-stage="rough"].active{background:var(--orange);border-color:var(--orange);color:var(--navy);}
+  .stage-pill[data-stage="sound"].active{background:var(--pink);border-color:var(--pink);color:var(--navy);}
+  .stage-pill[data-stage="color"].active{background:var(--teal);border-color:var(--teal);color:#fff;}
+  .stage-pill[data-stage="review"].active{background:var(--lime);border-color:var(--lime);color:var(--navy);}
+  .stage-pill[data-stage="delivered"].active{background:var(--indigo);border-color:var(--indigo);color:#fff;}
+
+  .dur-row{display:flex;gap:10px;align-items:center;}
+
+  .active-take-summary{font-family:var(--font-body);font-size:13px;color:var(--navy-soft);
+    margin-bottom:4px;line-height:1.6;}
+  .active-take-summary b{color:var(--navy);font-family:var(--font-display);}
+  .timer-display{font-family:var(--font-display);font-weight:800;font-size:40px;color:var(--indigo);
+    letter-spacing:.02em;margin:8px 0 18px;}
+  .btn-end{background:var(--red);color:#fff;box-shadow:0 3px 0 var(--navy);}
+  .btn-end:hover{filter:brightness(1.08);}
+  .dur-row select{
+    background:var(--cream);border:2px solid var(--line);color:var(--navy);
+    padding:9px 10px;border-radius:9px;font-family:var(--font-body);font-size:14px;
+  }
+  .dur-sep{color:var(--navy-faint);font-family:var(--font-display);font-weight:700;}
+
+  .btn-primary{
+    background:var(--yellow);color:var(--navy);border:2px solid var(--navy);padding:11px 22px;
+    border-radius:10px;font-family:var(--font-display);font-weight:800;font-size:13px;
+    letter-spacing:.02em;cursor:pointer;transition:filter .15s,transform .1s;
+    box-shadow:0 3px 0 var(--navy);
+  }
+  .btn-primary:hover{filter:brightness(1.05);}
+  .btn-primary:active{transform:translateY(2px);box-shadow:0 1px 0 var(--navy);}
+  .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+  .btn-primary:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;}
+  .form-error{color:var(--red);font-size:12px;margin-top:8px;font-family:var(--font-body);
+    font-weight:600;min-height:16px;}
+
+  .lock-warning{background:var(--red-tint);border:2px solid var(--red);color:#9A0029;
+    padding:10px 13px;border-radius:10px;font-size:12px;margin-bottom:14px;line-height:1.5;
+    font-weight:500;}
+  .lock-warning strong{color:var(--red);}
+
+  /* ---------- feed ---------- */
+  .feed-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+  .feed-row{
+    display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line);
+    font-size:13px;
+  }
+  .feed-row:last-child{border-bottom:none;}
+  .feed-time{font-family:var(--font-body);color:var(--navy-faint);font-size:11px;width:44px;flex:none;}
+  .feed-editor{font-weight:700;width:90px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .feed-video{font-family:var(--font-body);font-weight:600;color:var(--navy-soft);width:120px;flex:none;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .feed-stage{font-size:10px;font-family:var(--font-display);font-weight:700;padding:3px 9px;
+    border-radius:12px;flex:none;white-space:nowrap;}
+  .feed-stage.tag-stage-rough{background:var(--orange-tint);color:#B8460B;}
+  .feed-stage.tag-stage-sound{background:var(--pink-tint);color:#C22E96;}
+  .feed-stage.tag-stage-color{background:var(--teal-tint);color:#0E7A56;}
+  .feed-stage.tag-stage-review{background:var(--lime-tint);color:#5C8712;}
+  .feed-stage.tag-stage-delivered{background:var(--indigo-tint);color:var(--indigo);}
+  .feed-dur{font-family:var(--font-display);font-weight:700;color:var(--navy);width:48px;flex:none;text-align:right;}
+  .feed-notes{color:var(--navy-soft);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;}
+  .feed-del{background:none;border:none;color:var(--navy-faint);cursor:pointer;font-size:16px;
+    flex:none;padding:2px 6px;line-height:1;border-radius:4px;}
+  .feed-del:hover{color:var(--red);background:var(--red-tint);}
+  .empty-state{color:var(--navy-faint);font-size:13px;padding:14px 0;font-style:italic;}
+
+  /* ---------- dashboard ---------- */
+  .period-toggle{display:flex;gap:6px;margin-bottom:16px;}
+  .period-btn{
+    padding:7px 14px;border-radius:9px;border:2px solid var(--navy);background:var(--card);
+    color:var(--navy-soft);font-family:var(--font-display);font-weight:700;font-size:12px;cursor:pointer;
+  }
+  .period-btn.active{background:var(--indigo);border-color:var(--indigo);color:#fff;}
+  .period-btn:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;}
+
+  .video-row{padding:14px 0;border-bottom:1px dashed var(--line);}
+  .video-row:last-child{border-bottom:none;}
+  .video-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;gap:10px;}
+  .video-name{font-family:var(--font-display);font-weight:800;font-size:14px;}
+  .video-total{font-family:var(--font-display);color:var(--indigo);font-size:14px;font-weight:800;white-space:nowrap;}
+  .segbar{display:flex;gap:3px;margin-bottom:6px;}
+  .seg{flex:1;height:7px;border-radius:3px;background:var(--line);}
+  .seg.on.seg-rough{background:var(--orange);}
+  .seg.on.seg-sound{background:var(--pink);}
+  .seg.on.seg-color{background:var(--teal);}
+  .seg.on.seg-review{background:var(--lime);}
+  .seg.on.seg-delivered{background:var(--indigo);}
+  .seg.current{animation:segpulse 1.8s infinite;}
+  @keyframes segpulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(51,47,209,.5);}
+    50%{box-shadow:0 0 6px 1px rgba(51,47,209,.5);}
+  }
+  .video-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--navy-faint);
+    font-family:var(--font-body);font-weight:500;}
+
+  .editor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;}
+  .editor-card{background:var(--cream);border:2px solid var(--line);border-radius:12px;
+    padding:12px;}
+  .editor-name{font-size:12px;color:var(--navy-soft);font-family:var(--font-display);font-weight:700;
+    margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .editor-hours{font-family:var(--font-display);font-size:20px;color:var(--indigo);font-weight:800;}
+  .editor-sub{font-size:10px;color:var(--navy-faint);margin-top:4px;font-weight:600;}
+  .editor-videos{font-size:10px;color:var(--navy-faint);margin-top:6px;line-height:1.5;
+    overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+
+  .editor-row{border-bottom:1px dashed var(--line);}
+  .editor-row:last-child{border-bottom:none;}
+  .editor-row-head{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;cursor:pointer;}
+  .editor-row-head:hover{background:var(--cream);}
+  .editor-row-name{font-family:var(--font-display);font-weight:800;font-size:13px;}
+  .editor-row-stats{display:flex;align-items:center;gap:14px;font-family:var(--font-display);
+    font-size:12px;color:var(--navy-soft);font-weight:700;}
+  .editor-row-stats .amber{color:var(--indigo);}
+  .editor-row-stats b{color:var(--navy);}
+  .chevron{color:var(--navy-faint);width:12px;text-align:center;flex:none;}
+  .editor-row-detail{padding:0 4px 14px 4px;}
+  .editor-row-sub{font-size:10px;color:var(--navy-faint);font-family:var(--font-display);margin-bottom:8px;
+    text-transform:uppercase;letter-spacing:.04em;font-weight:700;}
+  .ev-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-top:1px dashed var(--line);}
+  .ev-row:first-of-type{border-top:none;}
+  .ev-video{font-family:var(--font-body);font-weight:600;color:var(--navy-soft);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;max-width:70%;}
+  .ev-hours{font-family:var(--font-display);font-weight:700;color:var(--indigo);}
+
+  footer{text-align:center;color:var(--navy-faint);font-size:11px;margin-top:24px;line-height:1.6;}
+
+  /* ---------- identity gate ---------- */
+  .gate-card{max-width:400px;margin:60px auto;}
+  .gate-role-label{font-size:11px;color:var(--navy-soft);font-family:var(--font-display);
+    letter-spacing:.03em;text-transform:uppercase;margin-bottom:8px;font-weight:700;}
+  .gate-divider{border:none;border-top:2px dashed var(--line);margin:18px 0;}
+  .identity-line{font-size:11px;color:#C9C6F7;margin-top:5px;display:flex;
+    align-items:center;gap:6px;font-family:var(--font-body);}
+  .switch-link{background:none;border:none;color:var(--yellow);font-family:var(--font-display);
+    font-size:11px;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;}
+  .locked-field{background:var(--cream-deep) !important;color:var(--navy-soft);cursor:not-allowed;}
+
+  @media (max-width:520px){
+    .row2{grid-template-columns:1fr;}
+    .feed-video,.feed-editor{width:auto;max-width:90px;}
+    .slate{flex-direction:column;align-items:flex-start;gap:8px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="gate-screen">
+    <div class="card gate-card">
+      <div class="card-head">Who's logging in?</div>
+
+      <div class="gate-role-label">I'm an editor</div>
+      <div class="field">
+        <select id="gate-editor-name">
+          <option value="" disabled selected>Loading…</option>
+        </select>
+      </div>
+      <div class="field">
+        <input type="password" id="gate-editor-password" placeholder="Password">
+      </div>
+      <button type="button" class="btn-primary" id="gate-editor-btn">Continue as editor</button>
+
+      <hr class="gate-divider">
+
+      <div class="gate-role-label">I'm the manager</div>
+      <div class="field">
+        <input type="text" id="gate-manager-code" placeholder="Access code">
+      </div>
+      <button type="button" class="btn-primary" id="gate-manager-btn">Continue as manager</button>
+      <div class="form-error" id="gate-error"></div>
+    </div>
+  </div>
+
+  <div id="main-screen" style="display:none;">
+  <div class="slate">
+    <div class="slate-left">
+      <div>
+        <div class="slate-title" dir="rtl">شارع العلوم</div>
+        <div class="slate-sub">Science St. · Editor Log</div>
+        <div class="slate-tagline">Science, for real.</div>
+        <div class="identity-line" id="identity-line"></div>
+      </div>
+    </div>
+    <div class="slate-clock" id="clock">—</div>
+  </div>
+
+  <div class="panel active" id="panel-log">
+    <div class="card" id="take-setup">
+      <div class="card-head">Start a take</div>
+      <form id="log-form" autocomplete="off">
+        <div class="row2">
+          <div class="field">
+            <label for="f-editor">Editor</label>
+            <input type="text" id="f-editor" list="editor-list" dir="auto" placeholder="e.g. Mostafa" required>
+            <datalist id="editor-list"></datalist>
+          </div>
+          <div class="field">
+            <label for="f-video">Video / Episode</label>
+            <input type="text" id="f-video" list="video-list" dir="auto" placeholder="e.g. ADOG04EP12" required>
+            <datalist id="video-list"></datalist>
+          </div>
+        </div>
+
+        <div class="lock-warning" id="lock-warning" style="display:none;"></div>
+
+        <div class="field">
+          <label for="f-project">Project</label>
+          <select id="f-project"></select>
+        </div>
+
+        <div class="field">
+          <label>Stage</label>
+          <div class="stage-pills" id="stage-pills"></div>
+        </div>
+
+        <div class="field">
+          <label for="f-notes">Notes (optional)</label>
+          <textarea id="f-notes" dir="auto" placeholder="What are you about to work on?"></textarea>
+        </div>
+
+        <button type="submit" class="btn-primary" id="start-btn">Start Take ▸</button>
+        <div class="form-error" id="form-error"></div>
+      </form>
+    </div>
+
+    <div class="card" id="take-active" style="display:none;">
+      <div class="card-head">Take in progress</div>
+      <div class="active-take-summary" id="active-take-summary"></div>
+      <div class="timer-display" id="timer-display">0:00:00</div>
+      <div class="field">
+        <label for="f-notes-active">Notes (optional)</label>
+        <textarea id="f-notes-active" dir="auto" placeholder="What happened in this session?"></textarea>
+      </div>
+      <button type="button" class="btn-primary btn-end" id="end-btn">■ End Take</button>
+      <div class="form-error" id="end-error"></div>
+    </div>
+
+    <div class="card">
+      <div class="feed-head">
+        <div class="card-head" style="margin-bottom:0">Today's takes</div>
+      </div>
+      <div id="today-feed"><div class="empty-state">Loading…</div></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-dashboard">
+    <div class="period-toggle">
+      <button class="period-btn active" data-period="today">TODAY</button>
+      <button class="period-btn" data-period="week">LAST 7 DAYS</button>
+    </div>
+    <div id="dash-content"><div class="empty-state">Loading…</div></div>
+  </div>
+
+  <div class="card" id="password-panel" style="display:none;max-width:360px;">
+    <div class="card-head">Change password</div>
+    <div class="field">
+      <label for="pw-current">Current password</label>
+      <input type="password" id="pw-current" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="pw-new">New password</label>
+      <input type="password" id="pw-new" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="pw-confirm">Confirm new password</label>
+      <input type="password" id="pw-confirm" autocomplete="off">
+    </div>
+    <button type="button" class="btn-primary" id="pw-save-btn">Save password</button>
+    <button type="button" class="switch-link" id="pw-cancel-btn" style="margin-left:14px;">Cancel</button>
+    <div class="form-error" id="pw-error"></div>
+  </div>
+
+  <footer>Editors see only their own log here. The manager view aggregates the whole team.</footer>
+  </div><!-- /main-screen -->
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STAGES = [
+    {id:'rough', label:'Rough Cut'},
+    {id:'sound', label:'Sound'},
+    {id:'color', label:'Color/Motion'},
+    {id:'review', label:'Review'},
+    {id:'delivered', label:'Delivered'}
+  ];
+  // Paste the "Web app" URL you get from deploying the Apps Script (ends in /exec)
+  var SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbxlIwkJFbEWwKBEmnRWH7SUe3NkvpE2snxlKGZWBsRj2-LYa8kzm3Bm8VOl22iNDy2G/exec';
+
+  var LOCK_TTL_MS = 3 * 60 * 60 * 1000; // a lock goes stale after 3 hours of inactivity
+  var MANAGER_NAME = 'Adhmgold';
+  var DEFAULT_CREDENTIALS = {
+    managerCode: '234623',
+    editors: {
+      'Saqr': '1024',
+      'Elmasry': '2158',
+      'Amr Annan': '3379',
+      'Rana': '4482',
+      'Ezz': '5510',
+      'Youssef': '6643',
+      'Ziad': '7726',
+      'Anas': '8814',
+      'Maaty': '9931'
+    }
+  }; // local fallback only — the sheet seeds itself with these on first run
+
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', selectedStage: 'rough', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], activeTake: null, allActiveTakes: {}, timerInterval: null };
+
+  function escapeHtml(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+  function todayStr(d){
+    d = d || new Date();
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  }
+
+  function dateMinus(days){
+    var d = new Date();
+    d.setDate(d.getDate() - days);
+    return todayStr(d);
+  }
+
+  function monthStartStr(){
+    var d = new Date();
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-01';
+  }
+
+  function monthLabel(){
+    var d = new Date();
+    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  function formatHM(hoursDecimal){
+    var totalMin = Math.round(hoursDecimal * 60);
+    var hh = Math.floor(totalMin / 60);
+    var mm = totalMin % 60;
+    return hh + ':' + pad(mm);
+  }
+
+  function formatHMS(ms){
+    var totalSec = Math.max(0, Math.floor(ms / 1000));
+    var hh = Math.floor(totalSec / 3600);
+    var mm = Math.floor((totalSec % 3600) / 60);
+    var ss = totalSec % 60;
+    return hh + ':' + pad(mm) + ':' + pad(ss);
+  }
+
+  function formatDateLabel(dateStr){
+    var parts = dateStr.split('-').map(Number);
+    var d = new Date(parts[0], parts[1]-1, parts[2]);
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return days[d.getDay()] + ' ' + pad(d.getDate()) + ' ' + months[d.getMonth()];
+  }
+
+  function uid(){
+    return Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+  }
+
+  function stageLabel(id){
+    var s = STAGES.filter(function(x){ return x.id === id; })[0];
+    return s ? s.label : id;
+  }
+
+  /* ---------- storage (Google Sheets via Apps Script) ---------- */
+  function postAction(action, payload){
+    var body = Object.assign({ action: action }, payload || {});
+    return fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(body) })
+      .then(function(r){ return r.json(); });
+  }
+
+  function getAction(action, query){
+    var qs = 'action=' + encodeURIComponent(action) + (query || '');
+    return fetch(SHEETS_API_URL + '?' + qs).then(function(r){ return r.json(); });
+  }
+
+  function loadEntries(){
+    return getAction('getEntries')
+      .then(function(d){ return (d && d.entries) ? d.entries : []; })
+      .catch(function(){ return []; });
+  }
+
+  function loadLocks(){
+    return getAction('getLocks')
+      .then(function(d){ return (d && d.locks) ? d.locks : {}; })
+      .catch(function(){ return {}; });
+  }
+
+  function persistLocks(locks){
+    return postAction('setLocks', { locks: locks });
+  }
+
+  function loadActiveTakes(){
+    return getAction('getActiveTakes')
+      .then(function(d){ return (d && d.activeTakes) ? d.activeTakes : {}; })
+      .catch(function(){ return {}; });
+  }
+
+  function persistActiveTakes(activeTakes){
+    return postAction('setActiveTakes', { activeTakes: activeTakes });
+  }
+
+  function loadProjects(){
+    return getAction('getProjects')
+      .then(function(d){ return (d && d.projects && d.projects.length) ? d.projects : ['Talemiaa', 'Sharee7']; })
+      .catch(function(){ return ['Talemiaa', 'Sharee7']; });
+  }
+
+  function persistProjects(projects){
+    return postAction('setProjects', { projects: projects });
+  }
+
+  function loadIdentity(){
+    try{
+      var raw = localStorage.getItem('ss_identity');
+      return Promise.resolve(raw ? JSON.parse(raw) : null);
+    } catch(e){ return Promise.resolve(null); }
+  }
+
+  function saveIdentity(id){
+    try{ localStorage.setItem('ss_identity', JSON.stringify(id)); } catch(e){}
+    return Promise.resolve();
+  }
+
+  function clearIdentity(){
+    try{ localStorage.removeItem('ss_identity'); } catch(e){}
+    return Promise.resolve();
+  }
+
+  function loadCredentials(){
+    return getAction('getCredentials')
+      .then(function(d){ return (d && d.credentials) ? d.credentials : DEFAULT_CREDENTIALS; })
+      .catch(function(){ return DEFAULT_CREDENTIALS; });
+  }
+
+  function persistCredentials(creds){
+    return postAction('setCredentials', { credentials: creds });
+  }
+
+  /* ---------- clock ---------- */
+  function tickClock(){
+    var d = new Date();
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var el = document.getElementById('clock');
+    if(el){
+      el.textContent = days[d.getDay()]+' '+pad(d.getDate())+' '+months[d.getMonth()]+' · '+pad(d.getHours())+':'+pad(d.getMinutes());
+    }
+  }
+
+  /* ---------- form setup (rendered once, uncontrolled inputs) ---------- */
+  function setupForm(){
+    var pillsWrap = document.getElementById('stage-pills');
+    pillsWrap.innerHTML = STAGES.map(function(s){
+      return '<button type="button" class="stage-pill'+(s.id===state.selectedStage?' active':'')+'" data-stage="'+s.id+'">'+escapeHtml(s.label)+'</button>';
+    }).join('');
+    populateProjectSelect();
+  }
+
+  function populateProjectSelect(selectedValue){
+    var sel = document.getElementById('f-project');
+    var current = selectedValue || sel.value;
+    sel.innerHTML = state.projects.map(function(p){
+      return '<option value="'+escapeHtml(p)+'">'+escapeHtml(p)+'</option>';
+    }).join('') + '<option value="__add_new__">+ Add new project…</option>';
+    if(current && state.projects.indexOf(current) !== -1){ sel.value = current; }
+  }
+
+  function refreshDatalists(){
+    var editors = Array.from(new Set(state.entries.map(function(e){ return e.editor; }))).sort();
+    var videos = Array.from(new Set(state.entries.map(function(e){ return e.video; }))).sort();
+    document.getElementById('editor-list').innerHTML = editors.map(function(e){ return '<option value="'+escapeHtml(e)+'">'; }).join('');
+    document.getElementById('video-list').innerHTML = videos.map(function(v){ return '<option value="'+escapeHtml(v)+'">'; }).join('');
+  }
+
+  /* ---------- collision warning ---------- */
+  function checkVideoLock(){
+    var video = document.getElementById('f-video').value.trim();
+    var warnEl = document.getElementById('lock-warning');
+    var lock = video ? state.locks[video] : null;
+
+    if(!lock){ warnEl.style.display = 'none'; return; }
+
+    var age = Date.now() - new Date(lock.lastActiveAt).getTime();
+    if(age > LOCK_TTL_MS || lock.editor === state.identity.name){
+      warnEl.style.display = 'none';
+      return;
+    }
+
+    var mins = Math.round(age / 60000);
+    var agoTxt = mins < 60 ? (mins + 'm ago') : (Math.round(mins/60) + 'h ago');
+    warnEl.innerHTML = '⚠ <strong>' + escapeHtml(lock.editor) + '</strong> is already working on this episode (active ' + agoTxt + '). Check with them before opening it.';
+    warnEl.style.display = 'block';
+  }
+
+  /* ---------- today feed ---------- */
+  function renderFeed(){
+    var dateVal = todayStr();
+    var rows = state.entries
+      .filter(function(e){ return e.date === dateVal; })
+      .filter(function(e){ return state.identity.role !== 'editor' || e.editor === state.identity.name; })
+      .sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+
+    var wrap = document.getElementById('today-feed');
+    if(state.loading){ wrap.innerHTML = '<div class="empty-state">Loading…</div>'; return; }
+    if(rows.length === 0){
+      wrap.innerHTML = '<div class="empty-state">Nothing logged yet today.</div>';
+      return;
+    }
+    wrap.innerHTML = rows.map(function(e){
+      var t = new Date(e.loggedAt);
+      var timeStr = pad(t.getHours())+':'+pad(t.getMinutes());
+      var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
+      return '<div class="feed-row">'
+        + '<div class="feed-time">'+timeStr+'</div>'
+        + '<div class="feed-editor" title="'+escapeHtml(e.editor)+'">'+escapeHtml(e.editor)+'</div>'
+        + '<div class="feed-video" title="'+escapeHtml(e.video)+' · '+escapeHtml(e.project||'')+'">'+videoLabel+'</div>'
+        + '<div class="feed-stage tag-stage-'+e.stage+'">'+escapeHtml(stageLabel(e.stage))+'</div>'
+        + '<div class="feed-dur">'+formatHM(e.hours)+'</div>'
+        + '<div class="feed-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes)+'</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  /* ---------- dashboard ---------- */
+  function computeVideoStats(video){
+    var all = state.entries.filter(function(e){ return e.video === video; });
+    var totalHours = all.reduce(function(s,e){ return s + e.hours; }, 0);
+    var touched = new Set(all.map(function(e){ return e.stage; }));
+    var furthestIdx = -1;
+    STAGES.forEach(function(s, i){ if(touched.has(s.id)) furthestIdx = i; });
+    var contributors = Array.from(new Set(all.map(function(e){ return e.editor; })));
+    var lastLoggedAt = all.reduce(function(m,e){ return e.loggedAt > m ? e.loggedAt : m; }, '');
+    var project = all.length ? all[all.length-1].project : '';
+    return { totalHours: totalHours, touched: touched, furthestIdx: furthestIdx, contributors: contributors, lastLoggedAt: lastLoggedAt, project: project };
+  }
+
+  function computeEditorProgress(name){
+    var mine = state.entries.filter(function(e){ return e.editor === name; });
+    var monthStart = monthStartStr();
+    var monthMine = mine.filter(function(e){ return e.date >= monthStart; });
+    var hoursThisMonth = monthMine.reduce(function(s,e){ return s + e.hours; }, 0);
+    var videosThisMonthCount = new Set(monthMine.map(function(e){ return e.video; })).size;
+
+    var byVideo = {};
+    mine.forEach(function(e){
+      byVideo[e.video] = (byVideo[e.video] || 0) + e.hours;
+    });
+    var videoList = Object.keys(byVideo).map(function(v){
+      return { video: v, hours: byVideo[v] };
+    }).sort(function(a,b){ return b.hours - a.hours; });
+
+    return {
+      name: name,
+      videosThisMonth: videosThisMonthCount,
+      hoursThisMonth: hoursThisMonth,
+      videosAllTime: videoList.length,
+      videoList: videoList
+    };
+  }
+
+  function renderDashboard(){
+    var wrap = document.getElementById('dash-content');
+    if(state.loading){ wrap.innerHTML = '<div class="empty-state">Loading…</div>'; return; }
+
+    var periodStart = state.period === 'today' ? todayStr() : dateMinus(6);
+    var periodEntries = state.entries.filter(function(e){ return e.date >= periodStart; });
+    var periodLabel = state.period === 'today' ? 'touched today' : 'touched this week';
+
+    var videoNames = Array.from(new Set(periodEntries.map(function(e){ return e.video; })));
+    var videoStats = videoNames.map(function(v){
+      var s = computeVideoStats(v);
+      s.video = v;
+      return s;
+    }).sort(function(a,b){ return b.lastLoggedAt.localeCompare(a.lastLoggedAt); });
+
+    var editorNames = Array.from(new Set(periodEntries.map(function(e){ return e.editor; })));
+    var editorStats = editorNames.map(function(name){
+      var mine = periodEntries.filter(function(e){ return e.editor === name; });
+      var hours = mine.reduce(function(s,e){ return s + e.hours; }, 0);
+      var videos = Array.from(new Set(mine.map(function(e){ return e.video; })));
+      return { name: name, hours: hours, count: mine.length, videos: videos };
+    }).sort(function(a,b){ return b.hours - a.hours; });
+
+    var html = '';
+    html += '<div class="card"><div class="card-head">Videos ' + periodLabel + '</div>';
+    if(videoStats.length === 0){
+      html += '<div class="empty-state">No videos touched in this period yet.</div>';
+    } else {
+      html += videoStats.map(function(s){
+        var segs = STAGES.map(function(st, i){
+          var cls = 'seg seg-' + st.id + (s.touched.has(st.id) ? ' on' : '') + (i === s.furthestIdx ? ' current' : '');
+          return '<div class="'+cls+'"></div>';
+        }).join('');
+        var contrib = s.contributors.slice(0,3).join(', ') + (s.contributors.length > 3 ? ' +'+(s.contributors.length-3)+' more' : '');
+        var stageTxt = s.furthestIdx >= 0 ? stageLabel(STAGES[s.furthestIdx].id) : '—';
+        var videoTitle = escapeHtml(s.video) + (s.project ? ' <span style="color:var(--navy-faint);font-weight:600;font-size:12px;">· '+escapeHtml(s.project)+'</span>' : '');
+        return '<div class="video-row">'
+          + '<div class="video-top"><div class="video-name">'+videoTitle+'</div><div class="video-total">'+formatHM(s.totalHours)+'</div></div>'
+          + '<div class="segbar">'+segs+'</div>'
+          + '<div class="video-meta"><span>'+escapeHtml(stageTxt)+'</span><span>'+escapeHtml(contrib)+'</span></div>'
+          + '</div>';
+      }).join('');
+    }
+    html += '</div>';
+
+    html += '<div class="card"><div class="card-head">By editor — ' + (state.period==='today'?'today':'last 7 days') + '</div>';
+    if(editorStats.length === 0){
+      html += '<div class="empty-state">No takes logged in this period yet.</div>';
+    } else {
+      html += '<div class="editor-grid">' + editorStats.map(function(e){
+        return '<div class="editor-card">'
+          + '<div class="editor-name" title="'+escapeHtml(e.name)+'">'+escapeHtml(e.name)+'</div>'
+          + '<div class="editor-hours">'+formatHM(e.hours)+'</div>'
+          + '<div class="editor-sub">'+e.count+' take'+(e.count===1?'':'s')+'</div>'
+          + '<div class="editor-videos">'+escapeHtml(e.videos.join(', '))+'</div>'
+          + '</div>';
+      }).join('') + '</div>';
+    }
+    html += '</div>';
+
+    var allEditorNames = Array.from(new Set(state.entries.map(function(e){ return e.editor; })));
+    var progress = allEditorNames.map(computeEditorProgress)
+      .sort(function(a,b){ return b.hoursThisMonth - a.hoursThisMonth; });
+
+    html += '<div class="card"><div class="card-head">Editor progress — ' + monthLabel() + '</div>';
+    if(progress.length === 0){
+      html += '<div class="empty-state">No takes logged yet.</div>';
+    } else {
+      html += progress.map(function(p){
+        var expanded = state.expandedEditors.has(p.name);
+        var row = '<div class="editor-row">'
+          + '<div class="editor-row-head" data-toggle-editor="'+escapeHtml(p.name)+'">'
+          +   '<div class="editor-row-name">'+escapeHtml(p.name)+'</div>'
+          +   '<div class="editor-row-stats">'
+          +     '<span class="stat"><b>'+p.videosThisMonth+'</b> video'+(p.videosThisMonth===1?'':'s')+'</span>'
+          +     '<span class="stat amber"><b>'+formatHM(p.hoursThisMonth)+'</b></span>'
+          +     '<span class="chevron">'+(expanded ? '▾' : '▸')+'</span>'
+          +   '</div>'
+          + '</div>';
+        if(expanded){
+          row += '<div class="editor-row-detail">'
+            + '<div class="editor-row-sub">'+p.videosAllTime+' video'+(p.videosAllTime===1?'':'s')+' overall — time per video</div>'
+            + (p.videoList.length === 0 ? '<div class="empty-state">Nothing logged yet.</div>' : p.videoList.map(function(v){
+                return '<div class="ev-row"><span class="ev-video" title="'+escapeHtml(v.video)+'">'+escapeHtml(v.video)+'</span><span class="ev-hours">'+formatHM(v.hours)+'</span></div>';
+              }).join(''))
+            + '</div>';
+        }
+        row += '</div>';
+        return row;
+      }).join('');
+    }
+    html += '</div>';
+
+    wrap.innerHTML = html;
+  }
+
+  /* ---------- live timer UI ---------- */
+  function tickTimer(){
+    if(!state.activeTake) return;
+    var started = new Date(state.activeTake.startedAt).getTime();
+    var el = document.getElementById('timer-display');
+    if(el){ el.textContent = formatHMS(Date.now() - started); }
+  }
+
+  function enterActiveTakeUI(){
+    document.getElementById('take-setup').style.display = 'none';
+    document.getElementById('take-active').style.display = 'block';
+    var at = state.activeTake;
+    document.getElementById('active-take-summary').innerHTML =
+      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(stageLabel(at.stage));
+    document.getElementById('f-notes-active').value = at.notes || '';
+    tickTimer();
+    if(state.timerInterval){ clearInterval(state.timerInterval); }
+    state.timerInterval = setInterval(tickTimer, 1000);
+  }
+
+  function exitActiveTakeUI(){
+    if(state.timerInterval){ clearInterval(state.timerInterval); state.timerInterval = null; }
+    document.getElementById('take-active').style.display = 'none';
+    document.getElementById('take-setup').style.display = 'block';
+  }
+
+  /* ---------- actions ---------- */
+  function startTake(){
+    var editor = document.getElementById('f-editor').value.trim();
+    var video = document.getElementById('f-video').value.trim();
+    var project = document.getElementById('f-project').value;
+    var notes = document.getElementById('f-notes').value.trim();
+    var errEl = document.getElementById('form-error');
+    errEl.textContent = '';
+
+    if(!editor || !video){
+      errEl.textContent = 'Editor and video are required.';
+      return;
+    }
+    if(!project || project === '__add_new__'){
+      errEl.textContent = 'Pick a project first.';
+      return;
+    }
+
+    var take = {
+      video: video,
+      project: project,
+      stage: state.selectedStage,
+      notes: notes,
+      startedAt: new Date().toISOString()
+    };
+
+    var btn = document.getElementById('start-btn');
+    btn.disabled = true;
+
+    var newActiveTakes = Object.assign({}, state.allActiveTakes);
+    newActiveTakes[editor] = take;
+
+    persistActiveTakes(newActiveTakes).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.allActiveTakes = newActiveTakes;
+      state.activeTake = take;
+
+      var newLocks = Object.assign({}, state.locks);
+      newLocks[video] = { editor: editor, lastActiveAt: new Date().toISOString() };
+      persistLocks(newLocks).then(function(){ state.locks = newLocks; });
+
+      document.getElementById('lock-warning').style.display = 'none';
+      enterActiveTakeUI();
+    }).catch(function(){
+      errEl.textContent = "Couldn't start — check your connection and try again.";
+    }).finally(function(){
+      btn.disabled = false;
+    });
+  }
+
+  function endTake(){
+    if(!state.activeTake) return;
+    var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
+    var take = state.activeTake;
+    var notes = document.getElementById('f-notes-active').value.trim();
+    var errEl = document.getElementById('end-error');
+    errEl.textContent = '';
+
+    var startedMs = new Date(take.startedAt).getTime();
+    var hours = (Date.now() - startedMs) / 3600000;
+    if(hours <= 0){ hours = 0.01; }
+
+    var entry = {
+      id: uid(),
+      editor: editor,
+      video: take.video,
+      project: take.project,
+      stage: take.stage,
+      hours: hours,
+      notes: notes,
+      date: todayStr(new Date(startedMs)),
+      loggedAt: new Date().toISOString()
+    };
+
+    var btn = document.getElementById('end-btn');
+    btn.disabled = true;
+
+    postAction('addEntry', { entry: entry }).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.entries = state.entries.concat([entry]);
+
+      var newActiveTakes = Object.assign({}, state.allActiveTakes);
+      delete newActiveTakes[editor];
+      return persistActiveTakes(newActiveTakes).then(function(){
+        state.allActiveTakes = newActiveTakes;
+        state.activeTake = null;
+      });
+    }).then(function(){
+      var newLocks = Object.assign({}, state.locks);
+      if(entry.stage === 'delivered'){
+        delete newLocks[entry.video];
+      } else {
+        newLocks[entry.video] = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
+      }
+      return persistLocks(newLocks).then(function(){ state.locks = newLocks; });
+    }).then(function(){
+      document.getElementById('f-video').value = '';
+      document.getElementById('f-notes').value = '';
+      document.getElementById('f-notes-active').value = '';
+      refreshDatalists();
+      renderFeed();
+      if(state.activeTab === 'dashboard') renderDashboard();
+      exitActiveTakeUI();
+    }).catch(function(){
+      errEl.textContent = "Couldn't save — check your connection and try again.";
+    }).finally(function(){
+      btn.disabled = false;
+    });
+  }
+
+  /* ---------- period ---------- */
+  function setPeriod(p){
+    state.period = p;
+    document.querySelectorAll('.period-btn').forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-period') === p);
+    });
+    renderDashboard();
+  }
+
+  /* ---------- event delegation ---------- */
+  document.addEventListener('click', function(e){
+    if(e.target && e.target.id === 'gate-editor-btn'){
+      var name = document.getElementById('gate-editor-name').value;
+      var pw = document.getElementById('gate-editor-password').value;
+      var err = document.getElementById('gate-error');
+      if(!name){ err.textContent = 'Select your name from the list.'; return; }
+      if(!pw || pw !== state.credentials.editors[name]){ err.textContent = 'Incorrect password.'; return; }
+      err.textContent = '';
+      var editorId = { role:'editor', name: name };
+      saveIdentity(editorId).then(function(){ state.identity = editorId; showMain(); });
+      return;
+    }
+    if(e.target && e.target.id === 'gate-manager-btn'){
+      var code = document.getElementById('gate-manager-code').value.trim();
+      var err2 = document.getElementById('gate-error');
+      if(code !== state.credentials.managerCode){ err2.textContent = 'Incorrect access code.'; return; }
+      err2.textContent = '';
+      var mgrId = { role:'manager', name: MANAGER_NAME };
+      saveIdentity(mgrId).then(function(){ state.identity = mgrId; showMain(); });
+      return;
+    }
+    if(e.target && e.target.id === 'switch-user-btn'){
+      clearIdentity().then(function(){ location.reload(); });
+      return;
+    }
+    if(e.target && e.target.id === 'change-password-btn'){
+      document.getElementById('pw-current').value = '';
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-confirm').value = '';
+      document.getElementById('pw-error').textContent = '';
+      document.getElementById('pw-error').style.color = 'var(--red)';
+      document.getElementById('password-panel').style.display = 'block';
+      document.getElementById('pw-current').focus();
+      return;
+    }
+    if(e.target && e.target.id === 'pw-cancel-btn'){
+      document.getElementById('password-panel').style.display = 'none';
+      return;
+    }
+    if(e.target && e.target.id === 'pw-save-btn'){
+      var cur = document.getElementById('pw-current').value;
+      var nw = document.getElementById('pw-new').value;
+      var conf = document.getElementById('pw-confirm').value;
+      var pwErr = document.getElementById('pw-error');
+      pwErr.style.color = 'var(--red)';
+
+      var isEditorRole = state.identity.role === 'editor';
+      var storedPw = isEditorRole ? state.credentials.editors[state.identity.name] : state.credentials.managerCode;
+
+      if(cur !== storedPw){ pwErr.textContent = 'Current password is incorrect.'; return; }
+      if(!nw || nw.length < 4){ pwErr.textContent = 'New password must be at least 4 characters.'; return; }
+      if(nw !== conf){ pwErr.textContent = 'New passwords do not match.'; return; }
+
+      var btn = document.getElementById('pw-save-btn');
+      btn.disabled = true;
+      var updated = JSON.parse(JSON.stringify(state.credentials));
+      if(isEditorRole){ updated.editors[state.identity.name] = nw; }
+      else { updated.managerCode = nw; }
+
+      persistCredentials(updated).then(function(){
+        state.credentials = updated;
+        pwErr.style.color = 'var(--teal)';
+        pwErr.textContent = 'Password updated.';
+        document.getElementById('pw-current').value = '';
+        document.getElementById('pw-new').value = '';
+        document.getElementById('pw-confirm').value = '';
+      }).catch(function(){
+        pwErr.style.color = 'var(--red)';
+        pwErr.textContent = "Couldn't save — try again.";
+      }).finally(function(){
+        btn.disabled = false;
+      });
+      return;
+    }
+
+    var editorToggle = e.target.closest('[data-toggle-editor]');
+    if(editorToggle){
+      var toggleName = editorToggle.getAttribute('data-toggle-editor');
+      if(state.expandedEditors.has(toggleName)){ state.expandedEditors.delete(toggleName); }
+      else { state.expandedEditors.add(toggleName); }
+      renderDashboard();
+      return;
+    }
+
+    var periodBtn = e.target.closest('[data-period]');
+    if(periodBtn){ setPeriod(periodBtn.getAttribute('data-period')); return; }
+
+    var stagePill = e.target.closest('[data-stage]');
+    if(stagePill){
+      state.selectedStage = stagePill.getAttribute('data-stage');
+      document.querySelectorAll('.stage-pill').forEach(function(p){
+        p.classList.toggle('active', p === stagePill);
+      });
+      return;
+    }
+
+    var endBtn = e.target.closest('#end-btn');
+    if(endBtn){ endTake(); return; }
+  });
+
+  document.addEventListener('submit', function(e){
+    if(e.target && e.target.id === 'log-form'){
+      e.preventDefault();
+      startTake();
+    }
+  });
+
+  document.addEventListener('change', function(e){
+    if(e.target && e.target.id === 'f-project'){
+      if(e.target.value === '__add_new__'){
+        var name = window.prompt('New project name:');
+        name = name ? name.trim() : '';
+        if(name && state.projects.indexOf(name) === -1){
+          var updated = state.projects.concat([name]);
+          persistProjects(updated).then(function(){
+            state.projects = updated;
+            populateProjectSelect(name);
+          });
+        } else {
+          populateProjectSelect(state.projects[0] || '');
+        }
+      }
+    }
+  });
+
+  document.addEventListener('input', function(e){
+    if(e.target && e.target.id === 'f-video'){
+      checkVideoLock();
+    }
+  });
+
+  /* ---------- role-aware UI ---------- */
+  function applyRoleUI(){
+    var isEditor = state.identity.role === 'editor';
+    document.getElementById('panel-log').classList.toggle('active', isEditor);
+    document.getElementById('panel-dashboard').classList.toggle('active', !isEditor);
+    state.activeTab = isEditor ? 'log' : 'dashboard';
+
+    var editorField = document.getElementById('f-editor');
+    if(isEditor){
+      editorField.value = state.identity.name;
+      editorField.readOnly = true;
+      editorField.classList.add('locked-field');
+    } else {
+      editorField.value = state.identity.name || '';
+      editorField.readOnly = false;
+      editorField.classList.remove('locked-field');
+    }
+
+    document.getElementById('identity-line').innerHTML =
+      'Logged in as <strong>' + escapeHtml(state.identity.name) + '</strong> · ' + (isEditor ? 'editor' : 'manager') +
+      ' &nbsp;<button type="button" class="switch-link" id="change-password-btn">change password</button>' +
+      ' &nbsp;<button type="button" class="switch-link" id="switch-user-btn">switch</button>';
+  }
+
+  function showGate(){
+    document.getElementById('gate-screen').style.display = 'block';
+    document.getElementById('main-screen').style.display = 'none';
+  }
+
+  function showMain(){
+    document.getElementById('gate-screen').style.display = 'none';
+    document.getElementById('main-screen').style.display = 'block';
+    setupForm();
+    applyRoleUI();
+    tickClock();
+    setInterval(tickClock, 30000);
+    loadEntries().then(function(entries){
+      state.entries = entries;
+      state.loading = false;
+      refreshDatalists();
+      renderFeed();
+      if(state.activeTab === 'dashboard') renderDashboard();
+    });
+    loadLocks().then(function(locks){
+      state.locks = locks;
+      checkVideoLock();
+    });
+    loadProjects().then(function(projects){
+      state.projects = projects;
+      populateProjectSelect();
+    });
+    if(state.identity.role === 'editor'){
+      loadActiveTakes().then(function(activeTakes){
+        state.allActiveTakes = activeTakes;
+        var mine = activeTakes[state.identity.name];
+        if(mine){
+          state.activeTake = mine;
+          enterActiveTakeUI();
+        }
+      });
+    }
+  }
+
+  /* ---------- init ---------- */
+  function populateRoster(){
+    var sel = document.getElementById('gate-editor-name');
+    sel.innerHTML = '<option value="" disabled selected>Select your name…</option>';
+    Object.keys(state.credentials.editors).forEach(function(n){
+      var opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      sel.appendChild(opt);
+    });
+  }
+
+  if(!SHEETS_API_URL || SHEETS_API_URL.indexOf('PASTE_YOUR') !== -1){
+    document.getElementById('gate-screen').innerHTML =
+      '<div class="card gate-card">'
+      + '<div class="card-head">Setup needed</div>'
+      + '<div style="font-size:13px;line-height:1.6;color:var(--navy-soft);">'
+      + 'This tracker needs your Google Apps Script Web App URL pasted into <code>SHEETS_API_URL</code> near the top of the script. '
+      + 'Deploy the Apps Script as a Web App (Execute as: Me, Who has access: Anyone), copy the URL ending in <code>/exec</code>, and paste it in.'
+      + '</div></div>';
+  } else {
+    loadCredentials().then(function(creds){
+      state.credentials = creds;
+      populateRoster();
+      return loadIdentity();
+    }).then(function(id){
+      var valid = id && id.name && (
+        (id.role === 'editor' && state.credentials.editors.hasOwnProperty(id.name)) ||
+        (id.role === 'manager')
+      );
+      if(valid){
+        state.identity = id;
+        showMain();
+      } else {
+        showGate();
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>
