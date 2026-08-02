@@ -405,6 +405,8 @@
   var STAGE_COLORS = ['orange', 'pink', 'teal', 'lime', 'indigo'];
   // Paste the "Web app" URL you get from deploying the Apps Script (ends in /exec)
   var SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbxlIwkJFbEWwKBEmnRWH7SUe3NkvpE2snxlKGZWBsRj2-LYa8kzm3Bm8VOl22iNDy2G/exec';
+  // Must match API_TOKEN in Code.gs exactly
+  var API_TOKEN = '068d9d92dda72ea9f07d94ff3b22d294eaeb46839c6e20b2';
 
   var LOCK_TTL_MS = 3 * 60 * 60 * 1000; // a lock goes stale after 3 hours of inactivity
   var MANAGER_NAME = 'Adhmgold';
@@ -490,13 +492,13 @@
 
   /* ---------- storage (Google Sheets via Apps Script) ---------- */
   function postAction(action, payload){
-    var body = Object.assign({ action: action }, payload || {});
+    var body = Object.assign({ action: action, token: API_TOKEN }, payload || {});
     return fetch(SHEETS_API_URL, { method: 'POST', body: JSON.stringify(body) })
       .then(function(r){ return r.json(); });
   }
 
   function getAction(action, query){
-    var qs = 'action=' + encodeURIComponent(action) + (query || '');
+    var qs = 'action=' + encodeURIComponent(action) + '&token=' + encodeURIComponent(API_TOKEN) + (query || '');
     return fetch(SHEETS_API_URL + '?' + qs).then(function(r){ return r.json(); });
   }
 
