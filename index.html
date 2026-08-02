@@ -117,6 +117,14 @@
   .stage-pill[data-stage="delivered"].active{background:var(--indigo);border-color:var(--indigo);color:#fff;}
 
   .dur-row{display:flex;gap:10px;align-items:center;}
+
+  .active-take-summary{font-family:var(--font-body);font-size:13px;color:var(--navy-soft);
+    margin-bottom:4px;line-height:1.6;}
+  .active-take-summary b{color:var(--navy);font-family:var(--font-display);}
+  .timer-display{font-family:var(--font-display);font-weight:800;font-size:40px;color:var(--indigo);
+    letter-spacing:.02em;margin:8px 0 18px;}
+  .btn-end{background:var(--red);color:#fff;box-shadow:0 3px 0 var(--navy);}
+  .btn-end:hover{filter:brightness(1.08);}
   .dur-row select{
     background:var(--cream);border:2px solid var(--line);color:var(--navy);
     padding:9px 10px;border-radius:9px;font-family:var(--font-body);font-size:14px;
@@ -285,14 +293,9 @@
     <div class="slate-clock" id="clock">—</div>
   </div>
 
-  <div class="tabs">
-    <button class="tab-btn active" data-tab="log" id="tab-log">LOG ENTRY</button>
-    <button class="tab-btn" data-tab="dashboard" id="tab-dashboard">TEAM DASHBOARD</button>
-  </div>
-
   <div class="panel active" id="panel-log">
-    <div class="card">
-      <div class="card-head">Log a take</div>
+    <div class="card" id="take-setup">
+      <div class="card-head">Start a take</div>
       <form id="log-form" autocomplete="off">
         <div class="row2">
           <div class="field">
@@ -310,44 +313,40 @@
         <div class="lock-warning" id="lock-warning" style="display:none;"></div>
 
         <div class="field">
+          <label for="f-project">Project</label>
+          <select id="f-project"></select>
+        </div>
+
+        <div class="field">
           <label>Stage</label>
           <div class="stage-pills" id="stage-pills"></div>
         </div>
 
-        <div class="row2">
-          <div class="field">
-            <label>Time worked</label>
-            <div class="dur-row">
-              <select id="f-hours" aria-label="Hours"></select>
-              <span class="dur-sep">h</span>
-              <select id="f-minutes" aria-label="Minutes">
-                <option value="0">00</option>
-                <option value="15">15</option>
-                <option value="30">30</option>
-                <option value="45">45</option>
-              </select>
-              <span class="dur-sep">m</span>
-            </div>
-          </div>
-          <div class="field">
-            <label for="f-date">Date</label>
-            <input type="date" id="f-date">
-          </div>
-        </div>
-
         <div class="field">
           <label for="f-notes">Notes (optional)</label>
-          <textarea id="f-notes" dir="auto" placeholder="What happened in this session?"></textarea>
+          <textarea id="f-notes" dir="auto" placeholder="What are you about to work on?"></textarea>
         </div>
 
-        <button type="submit" class="btn-primary" id="submit-btn">LOG TAKE ▸</button>
+        <button type="submit" class="btn-primary" id="start-btn">Start Take ▸</button>
         <div class="form-error" id="form-error"></div>
       </form>
     </div>
 
+    <div class="card" id="take-active" style="display:none;">
+      <div class="card-head">Take in progress</div>
+      <div class="active-take-summary" id="active-take-summary"></div>
+      <div class="timer-display" id="timer-display">0:00:00</div>
+      <div class="field">
+        <label for="f-notes-active">Notes (optional)</label>
+        <textarea id="f-notes-active" dir="auto" placeholder="What happened in this session?"></textarea>
+      </div>
+      <button type="button" class="btn-primary btn-end" id="end-btn">■ End Take</button>
+      <div class="form-error" id="end-error"></div>
+    </div>
+
     <div class="card">
       <div class="feed-head">
-        <div class="card-head" style="margin-bottom:0" id="feed-title">Takes — today</div>
+        <div class="card-head" style="margin-bottom:0">Today's takes</div>
       </div>
       <div id="today-feed"><div class="empty-state">Loading…</div></div>
     </div>
@@ -415,7 +414,7 @@
     }
   }; // local fallback only — the sheet seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', selectedStage: 'rough', identity: null, expandedEditors: new Set(), credentials: null, locks: {} };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', selectedStage: 'rough', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], activeTake: null, allActiveTakes: {}, timerInterval: null };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -452,6 +451,14 @@
     var hh = Math.floor(totalMin / 60);
     var mm = totalMin % 60;
     return hh + ':' + pad(mm);
+  }
+
+  function formatHMS(ms){
+    var totalSec = Math.max(0, Math.floor(ms / 1000));
+    var hh = Math.floor(totalSec / 3600);
+    var mm = Math.floor((totalSec % 3600) / 60);
+    var ss = totalSec % 60;
+    return hh + ':' + pad(mm) + ':' + pad(ss);
   }
 
   function formatDateLabel(dateStr){
@@ -499,6 +506,26 @@
     return postAction('setLocks', { locks: locks });
   }
 
+  function loadActiveTakes(){
+    return getAction('getActiveTakes')
+      .then(function(d){ return (d && d.activeTakes) ? d.activeTakes : {}; })
+      .catch(function(){ return {}; });
+  }
+
+  function persistActiveTakes(activeTakes){
+    return postAction('setActiveTakes', { activeTakes: activeTakes });
+  }
+
+  function loadProjects(){
+    return getAction('getProjects')
+      .then(function(d){ return (d && d.projects && d.projects.length) ? d.projects : ['Talemiaa', 'Sharee7']; })
+      .catch(function(){ return ['Talemiaa', 'Sharee7']; });
+  }
+
+  function persistProjects(projects){
+    return postAction('setProjects', { projects: projects });
+  }
+
   function loadIdentity(){
     try{
       var raw = localStorage.getItem('ss_identity');
@@ -543,14 +570,16 @@
     pillsWrap.innerHTML = STAGES.map(function(s){
       return '<button type="button" class="stage-pill'+(s.id===state.selectedStage?' active':'')+'" data-stage="'+s.id+'">'+escapeHtml(s.label)+'</button>';
     }).join('');
+    populateProjectSelect();
+  }
 
-    var hoursSel = document.getElementById('f-hours');
-    var opts = '';
-    for(var h=0; h<=12; h++){ opts += '<option value="'+h+'">'+pad(h)+'</option>'; }
-    hoursSel.innerHTML = opts;
-
-    document.getElementById('f-date').value = todayStr();
-    document.getElementById('f-date').max = todayStr();
+  function populateProjectSelect(selectedValue){
+    var sel = document.getElementById('f-project');
+    var current = selectedValue || sel.value;
+    sel.innerHTML = state.projects.map(function(p){
+      return '<option value="'+escapeHtml(p)+'">'+escapeHtml(p)+'</option>';
+    }).join('') + '<option value="__add_new__">+ Add new project…</option>';
+    if(current && state.projects.indexOf(current) !== -1){ sel.value = current; }
   }
 
   function refreshDatalists(){
@@ -582,8 +611,7 @@
 
   /* ---------- today feed ---------- */
   function renderFeed(){
-    var dateVal = document.getElementById('f-date').value || todayStr();
-    document.getElementById('feed-title').textContent = 'Takes — ' + formatDateLabel(dateVal);
+    var dateVal = todayStr();
     var rows = state.entries
       .filter(function(e){ return e.date === dateVal; })
       .filter(function(e){ return state.identity.role !== 'editor' || e.editor === state.identity.name; })
@@ -592,20 +620,20 @@
     var wrap = document.getElementById('today-feed');
     if(state.loading){ wrap.innerHTML = '<div class="empty-state">Loading…</div>'; return; }
     if(rows.length === 0){
-      wrap.innerHTML = '<div class="empty-state">Nothing logged for this date yet.</div>';
+      wrap.innerHTML = '<div class="empty-state">Nothing logged yet today.</div>';
       return;
     }
     wrap.innerHTML = rows.map(function(e){
       var t = new Date(e.loggedAt);
       var timeStr = pad(t.getHours())+':'+pad(t.getMinutes());
+      var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
       return '<div class="feed-row">'
         + '<div class="feed-time">'+timeStr+'</div>'
         + '<div class="feed-editor" title="'+escapeHtml(e.editor)+'">'+escapeHtml(e.editor)+'</div>'
-        + '<div class="feed-video" title="'+escapeHtml(e.video)+'">'+escapeHtml(e.video)+'</div>'
+        + '<div class="feed-video" title="'+escapeHtml(e.video)+' · '+escapeHtml(e.project||'')+'">'+videoLabel+'</div>'
         + '<div class="feed-stage tag-stage-'+e.stage+'">'+escapeHtml(stageLabel(e.stage))+'</div>'
         + '<div class="feed-dur">'+formatHM(e.hours)+'</div>'
         + '<div class="feed-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes)+'</div>'
-        + '<button type="button" class="feed-del" data-delete="'+e.id+'" aria-label="Delete entry">×</button>'
         + '</div>';
     }).join('');
   }
@@ -619,7 +647,8 @@
     STAGES.forEach(function(s, i){ if(touched.has(s.id)) furthestIdx = i; });
     var contributors = Array.from(new Set(all.map(function(e){ return e.editor; })));
     var lastLoggedAt = all.reduce(function(m,e){ return e.loggedAt > m ? e.loggedAt : m; }, '');
-    return { totalHours: totalHours, touched: touched, furthestIdx: furthestIdx, contributors: contributors, lastLoggedAt: lastLoggedAt };
+    var project = all.length ? all[all.length-1].project : '';
+    return { totalHours: totalHours, touched: touched, furthestIdx: furthestIdx, contributors: contributors, lastLoggedAt: lastLoggedAt, project: project };
   }
 
   function computeEditorProgress(name){
@@ -681,8 +710,9 @@
         }).join('');
         var contrib = s.contributors.slice(0,3).join(', ') + (s.contributors.length > 3 ? ' +'+(s.contributors.length-3)+' more' : '');
         var stageTxt = s.furthestIdx >= 0 ? stageLabel(STAGES[s.furthestIdx].id) : '—';
+        var videoTitle = escapeHtml(s.video) + (s.project ? ' <span style="color:var(--navy-faint);font-weight:600;font-size:12px;">· '+escapeHtml(s.project)+'</span>' : '');
         return '<div class="video-row">'
-          + '<div class="video-top"><div class="video-name">'+escapeHtml(s.video)+'</div><div class="video-total">'+formatHM(s.totalHours)+'</div></div>'
+          + '<div class="video-top"><div class="video-name">'+videoTitle+'</div><div class="video-total">'+formatHM(s.totalHours)+'</div></div>'
           + '<div class="segbar">'+segs+'</div>'
           + '<div class="video-meta"><span>'+escapeHtml(stageTxt)+'</span><span>'+escapeHtml(contrib)+'</span></div>'
           + '</div>';
@@ -741,13 +771,37 @@
     wrap.innerHTML = html;
   }
 
+  /* ---------- live timer UI ---------- */
+  function tickTimer(){
+    if(!state.activeTake) return;
+    var started = new Date(state.activeTake.startedAt).getTime();
+    var el = document.getElementById('timer-display');
+    if(el){ el.textContent = formatHMS(Date.now() - started); }
+  }
+
+  function enterActiveTakeUI(){
+    document.getElementById('take-setup').style.display = 'none';
+    document.getElementById('take-active').style.display = 'block';
+    var at = state.activeTake;
+    document.getElementById('active-take-summary').innerHTML =
+      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(stageLabel(at.stage));
+    document.getElementById('f-notes-active').value = at.notes || '';
+    tickTimer();
+    if(state.timerInterval){ clearInterval(state.timerInterval); }
+    state.timerInterval = setInterval(tickTimer, 1000);
+  }
+
+  function exitActiveTakeUI(){
+    if(state.timerInterval){ clearInterval(state.timerInterval); state.timerInterval = null; }
+    document.getElementById('take-active').style.display = 'none';
+    document.getElementById('take-setup').style.display = 'block';
+  }
+
   /* ---------- actions ---------- */
-  function addEntry(){
+  function startTake(){
     var editor = document.getElementById('f-editor').value.trim();
     var video = document.getElementById('f-video').value.trim();
-    var hours = parseInt(document.getElementById('f-hours').value, 10) || 0;
-    var minutes = parseInt(document.getElementById('f-minutes').value, 10) || 0;
-    var date = document.getElementById('f-date').value || todayStr();
+    var project = document.getElementById('f-project').value;
     var notes = document.getElementById('f-notes').value.trim();
     var errEl = document.getElementById('form-error');
     errEl.textContent = '';
@@ -756,44 +810,96 @@
       errEl.textContent = 'Editor and video are required.';
       return;
     }
-    var totalHours = hours + minutes/60;
-    if(totalHours <= 0){
-      errEl.textContent = 'Add a duration greater than zero.';
+    if(!project || project === '__add_new__'){
+      errEl.textContent = 'Pick a project first.';
       return;
     }
+
+    var take = {
+      video: video,
+      project: project,
+      stage: state.selectedStage,
+      notes: notes,
+      startedAt: new Date().toISOString()
+    };
+
+    var btn = document.getElementById('start-btn');
+    btn.disabled = true;
+
+    var newActiveTakes = Object.assign({}, state.allActiveTakes);
+    newActiveTakes[editor] = take;
+
+    persistActiveTakes(newActiveTakes).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.allActiveTakes = newActiveTakes;
+      state.activeTake = take;
+
+      var newLocks = Object.assign({}, state.locks);
+      newLocks[video] = { editor: editor, lastActiveAt: new Date().toISOString() };
+      persistLocks(newLocks).then(function(){ state.locks = newLocks; });
+
+      document.getElementById('lock-warning').style.display = 'none';
+      enterActiveTakeUI();
+    }).catch(function(){
+      errEl.textContent = "Couldn't start — check your connection and try again.";
+    }).finally(function(){
+      btn.disabled = false;
+    });
+  }
+
+  function endTake(){
+    if(!state.activeTake) return;
+    var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
+    var take = state.activeTake;
+    var notes = document.getElementById('f-notes-active').value.trim();
+    var errEl = document.getElementById('end-error');
+    errEl.textContent = '';
+
+    var startedMs = new Date(take.startedAt).getTime();
+    var hours = (Date.now() - startedMs) / 3600000;
+    if(hours <= 0){ hours = 0.01; }
 
     var entry = {
       id: uid(),
       editor: editor,
-      video: video,
-      stage: state.selectedStage,
-      hours: totalHours,
+      video: take.video,
+      project: take.project,
+      stage: take.stage,
+      hours: hours,
       notes: notes,
-      date: date,
+      date: todayStr(new Date(startedMs)),
       loggedAt: new Date().toISOString()
     };
 
-    var btn = document.getElementById('submit-btn');
+    var btn = document.getElementById('end-btn');
     btn.disabled = true;
+
     postAction('addEntry', { entry: entry }).then(function(res){
       if(res && res.error){ throw new Error(res.error); }
       state.entries = state.entries.concat([entry]);
-      document.getElementById('f-video').value = '';
-      document.getElementById('f-notes').value = '';
-      document.getElementById('f-hours').value = '0';
-      document.getElementById('f-minutes').value = '0';
-      refreshDatalists();
-      renderFeed();
-      if(state.activeTab === 'dashboard') renderDashboard();
-      document.getElementById('lock-warning').style.display = 'none';
 
+      var newActiveTakes = Object.assign({}, state.allActiveTakes);
+      delete newActiveTakes[editor];
+      return persistActiveTakes(newActiveTakes).then(function(){
+        state.allActiveTakes = newActiveTakes;
+        state.activeTake = null;
+      });
+    }).then(function(){
       var newLocks = Object.assign({}, state.locks);
       if(entry.stage === 'delivered'){
         delete newLocks[entry.video];
       } else {
         newLocks[entry.video] = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
       }
-      persistLocks(newLocks).then(function(){ state.locks = newLocks; });
+      return persistLocks(newLocks).then(function(){ state.locks = newLocks; });
+    }).then(function(){
+      document.getElementById('f-video').value = '';
+      document.getElementById('f-notes').value = '';
+      document.getElementById('f-notes-active').value = '';
+      refreshDatalists();
+      renderFeed();
+      if(state.activeTab === 'dashboard') renderDashboard();
+      exitActiveTakeUI();
     }).catch(function(){
       errEl.textContent = "Couldn't save — check your connection and try again.";
     }).finally(function(){
@@ -801,29 +907,7 @@
     });
   }
 
-  function deleteEntry(id){
-    if(!window.confirm('Delete this take?')) return;
-    postAction('deleteEntry', { id: id }).then(function(res){
-      if(res && res.error){ throw new Error(res.error); }
-      state.entries = state.entries.filter(function(e){ return e.id !== id; });
-      refreshDatalists();
-      renderFeed();
-      if(state.activeTab === 'dashboard') renderDashboard();
-    }).catch(function(){
-      window.alert("Couldn't delete — try again.");
-    });
-  }
-
-  /* ---------- tabs / period ---------- */
-  function setTab(tab){
-    state.activeTab = tab;
-    document.getElementById('tab-log').classList.toggle('active', tab === 'log');
-    document.getElementById('tab-dashboard').classList.toggle('active', tab === 'dashboard');
-    document.getElementById('panel-log').classList.toggle('active', tab === 'log');
-    document.getElementById('panel-dashboard').classList.toggle('active', tab === 'dashboard');
-    if(tab === 'dashboard') renderDashboard();
-  }
-
+  /* ---------- period ---------- */
   function setPeriod(p){
     state.period = p;
     document.querySelectorAll('.period-btn').forEach(function(b){
@@ -917,9 +1001,6 @@
       return;
     }
 
-    var tabBtn = e.target.closest('[data-tab]');
-    if(tabBtn){ setTab(tabBtn.getAttribute('data-tab')); return; }
-
     var periodBtn = e.target.closest('[data-period]');
     if(periodBtn){ setPeriod(periodBtn.getAttribute('data-period')); return; }
 
@@ -932,20 +1013,32 @@
       return;
     }
 
-    var delBtn = e.target.closest('[data-delete]');
-    if(delBtn){ deleteEntry(delBtn.getAttribute('data-delete')); return; }
+    var endBtn = e.target.closest('#end-btn');
+    if(endBtn){ endTake(); return; }
   });
 
   document.addEventListener('submit', function(e){
     if(e.target && e.target.id === 'log-form'){
       e.preventDefault();
-      addEntry();
+      startTake();
     }
   });
 
   document.addEventListener('change', function(e){
-    if(e.target && e.target.id === 'f-date'){
-      renderFeed();
+    if(e.target && e.target.id === 'f-project'){
+      if(e.target.value === '__add_new__'){
+        var name = window.prompt('New project name:');
+        name = name ? name.trim() : '';
+        if(name && state.projects.indexOf(name) === -1){
+          var updated = state.projects.concat([name]);
+          persistProjects(updated).then(function(){
+            state.projects = updated;
+            populateProjectSelect(name);
+          });
+        } else {
+          populateProjectSelect(state.projects[0] || '');
+        }
+      }
     }
   });
 
@@ -958,10 +1051,9 @@
   /* ---------- role-aware UI ---------- */
   function applyRoleUI(){
     var isEditor = state.identity.role === 'editor';
-    document.querySelector('.tabs').style.display = isEditor ? 'none' : 'flex';
-    document.getElementById('panel-log').classList.add('active');
-    document.getElementById('panel-dashboard').classList.remove('active');
-    state.activeTab = 'log';
+    document.getElementById('panel-log').classList.toggle('active', isEditor);
+    document.getElementById('panel-dashboard').classList.toggle('active', !isEditor);
+    state.activeTab = isEditor ? 'log' : 'dashboard';
 
     var editorField = document.getElementById('f-editor');
     if(isEditor){
@@ -1003,6 +1095,20 @@
       state.locks = locks;
       checkVideoLock();
     });
+    loadProjects().then(function(projects){
+      state.projects = projects;
+      populateProjectSelect();
+    });
+    if(state.identity.role === 'editor'){
+      loadActiveTakes().then(function(activeTakes){
+        state.allActiveTakes = activeTakes;
+        var mine = activeTakes[state.identity.name];
+        if(mine){
+          state.activeTake = mine;
+          enterActiveTakeUI();
+        }
+      });
+    }
   }
 
   /* ---------- init ---------- */
