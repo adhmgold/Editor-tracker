@@ -370,7 +370,7 @@
           <textarea id="f-notes" dir="auto" placeholder="What are you about to work on?"></textarea>
         </div>
 
-        <button type="submit" class="btn-primary" id="start-btn">Start Take ▸</button>
+        <button type="submit" class="btn-primary" id="start-btn" disabled>Checking…</button>
         <div class="form-error" id="form-error"></div>
       </form>
     </div>
@@ -561,18 +561,6 @@
   } catch(e){ firebaseReady = false; }
   var db = firebaseReady ? firebase.firestore() : null;
 
-  function replaceCollection(name, obj){
-    return db.collection(name).get().then(function(snap){
-      var batch = db.batch();
-      snap.forEach(function(doc){ batch.delete(doc.ref); });
-      Object.keys(obj || {}).forEach(function(key){
-        batch.set(db.collection(name).doc(key), obj[key]);
-      });
-      return batch.commit();
-    }).then(function(){ return { ok: true }; })
-      .catch(function(err){ return { error: String(err) }; });
-  }
-
   function readCollectionAsMap(name){
     return db.collection(name).get().then(function(snap){
       var out = {};
@@ -593,16 +581,32 @@
     return readCollectionAsMap('locks');
   }
 
-  function persistLocks(locks){
-    return replaceCollection('locks', locks);
+  function setLock(video, lockData){
+    return db.collection('locks').doc(video).set(lockData)
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
+  }
+
+  function clearLock(video){
+    return db.collection('locks').doc(video).delete()
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
   }
 
   function loadActiveTakes(){
     return readCollectionAsMap('activeTakes');
   }
 
-  function persistActiveTakes(activeTakes){
-    return replaceCollection('activeTakes', activeTakes);
+  function setActiveTakeDoc(editor, take){
+    return db.collection('activeTakes').doc(editor).set(take)
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
+  }
+
+  function clearActiveTakeDoc(editor){
+    return db.collection('activeTakes').doc(editor).delete()
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
   }
 
   function loadListConfig(docId, fallback){
@@ -1278,17 +1282,13 @@
     var btn = document.getElementById('start-btn');
     btn.disabled = true;
 
-    var newActiveTakes = Object.assign({}, state.allActiveTakes);
-    newActiveTakes[editor] = take;
-
-    persistActiveTakes(newActiveTakes).then(function(res){
+    setActiveTakeDoc(editor, take).then(function(res){
       if(res && res.error){ throw new Error(res.error); }
-      state.allActiveTakes = newActiveTakes;
+      state.allActiveTakes[editor] = take;
       state.activeTake = take;
 
-      var newLocks = Object.assign({}, state.locks);
-      newLocks[video] = { editor: editor, lastActiveAt: new Date().toISOString() };
-      persistLocks(newLocks).then(function(){ state.locks = newLocks; });
+      var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
+      setLock(video, lockData).then(function(){ state.locks[video] = lockData; });
 
       document.getElementById('lock-warning').style.display = 'none';
       enterActiveTakeUI();
@@ -1330,21 +1330,18 @@
       if(res && res.error){ throw new Error(res.error); }
       state.entries = state.entries.concat([entry]);
 
-      var newActiveTakes = Object.assign({}, state.allActiveTakes);
-      delete newActiveTakes[editor];
-      return persistActiveTakes(newActiveTakes).then(function(){
-        state.allActiveTakes = newActiveTakes;
+      return clearActiveTakeDoc(editor).then(function(){
+        delete state.allActiveTakes[editor];
         state.activeTake = null;
       });
     }).then(function(){
-      var newLocks = Object.assign({}, state.locks);
       var isFinalStage = state.stages.length > 0 && entry.stage === state.stages[state.stages.length - 1];
       if(isFinalStage){
-        delete newLocks[entry.video];
+        return clearLock(entry.video).then(function(){ delete state.locks[entry.video]; });
       } else {
-        newLocks[entry.video] = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
+        var lockData = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
+        return setLock(entry.video, lockData).then(function(){ state.locks[entry.video] = lockData; });
       }
-      return persistLocks(newLocks).then(function(){ state.locks = newLocks; });
     }).then(function(){
       document.getElementById('f-video').value = '';
       document.getElementById('f-notes').value = '';
@@ -1605,6 +1602,10 @@
         if(mine){
           state.activeTake = mine;
           enterActiveTakeUI();
+        } else {
+          var startBtn = document.getElementById('start-btn');
+          startBtn.disabled = false;
+          startBtn.textContent = 'Start Take ▸';
         }
       }
     });
