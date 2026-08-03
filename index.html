@@ -142,6 +142,22 @@
   .add-new-row input[type=text]:focus-visible{outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo);}
   .btn-small{padding:8px 14px;font-size:12px;box-shadow:0 2px 0 var(--navy);flex:none;}
 
+  .stage-manage-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line);}
+  .stage-manage-row:last-child{border-bottom:none;}
+  .stage-arrows{display:flex;flex-direction:column;gap:2px;flex:none;}
+  .stage-arrow{background:var(--cream);border:1px solid var(--line);border-radius:5px;color:var(--navy-soft);
+    font-size:9px;line-height:1;padding:3px 5px;cursor:pointer;}
+  .stage-arrow:hover:not(:disabled){border-color:var(--indigo);color:var(--indigo);}
+  .stage-arrow:disabled{opacity:.3;cursor:not-allowed;}
+  .stage-name-field{flex:1;background:var(--cream);border:2px solid var(--line);color:var(--navy);
+    padding:7px 10px;border-radius:8px;font-family:var(--font-body);font-size:13px;}
+  .stage-name-field:focus-visible{outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo);}
+  .stage-delete{background:none;border:none;color:var(--navy-faint);cursor:pointer;font-size:17px;
+    flex:none;padding:2px 8px;line-height:1;border-radius:6px;}
+  .stage-delete:hover{color:var(--red);background:var(--red-tint);}
+  .stage-delete.confirm{color:#fff;background:var(--red);font-size:11px;font-family:var(--font-display);
+    font-weight:700;padding:6px 10px;white-space:nowrap;}
+
   .btn-primary{
     background:var(--yellow);color:var(--navy);border:2px solid var(--navy);padding:11px 22px;
     border-radius:10px;font-family:var(--font-display);font-weight:800;font-size:13px;
@@ -394,6 +410,16 @@
       <div id="dash-editor-detail"></div>
     </div>
 
+    <div class="card">
+      <div class="card-head">Manage stages</div>
+      <div id="stage-manage-list"></div>
+      <div class="add-new-row">
+        <input type="text" id="new-stage-manage-input" placeholder="New stage name" dir="auto">
+        <button type="button" class="btn-primary btn-small" id="add-stage-manage-confirm">Add</button>
+      </div>
+      <div class="editor-row-sub" style="margin-top:10px;">Renaming only affects new takes going forward — past entries keep their original stage name.</div>
+    </div>
+
     <button type="button" class="btn-primary" id="export-all-btn" style="margin-bottom:16px;">Export monthly report — all editors ⤓</button>
 
     <div class="period-toggle">
@@ -453,7 +479,7 @@
     }
   }; // local fallback only — the sheet seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], activeTake: null, allActiveTakes: {}, timerInterval: null };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, activeTake: null, allActiveTakes: {}, timerInterval: null };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -692,6 +718,94 @@
     if(document.getElementById('f-stage').value === '__add_new__'){
       populateStageSelect(state.stages[0] || '');
     }
+  }
+
+  /* ---------- manage stages (manager dashboard) ---------- */
+  function renderStageManageList(){
+    var wrap = document.getElementById('stage-manage-list');
+    if(!wrap) return;
+    wrap.innerHTML = state.stages.map(function(name, i){
+      var isConfirm = state.confirmDeleteStage === name;
+      return '<div class="stage-manage-row">'
+        + '<div class="stage-arrows">'
+        +   '<button type="button" class="stage-arrow" data-move-up="'+escapeHtml(name)+'"'+(i===0?' disabled':'')+'>▲</button>'
+        +   '<button type="button" class="stage-arrow" data-move-down="'+escapeHtml(name)+'"'+(i===state.stages.length-1?' disabled':'')+'>▼</button>'
+        + '</div>'
+        + '<input type="text" class="stage-name-field" value="'+escapeHtml(name)+'" data-original="'+escapeHtml(name)+'">'
+        + (isConfirm
+            ? '<button type="button" class="stage-delete confirm" data-confirm-delete="'+escapeHtml(name)+'">Confirm?</button>'
+            : '<button type="button" class="stage-delete" data-ask-delete="'+escapeHtml(name)+'" aria-label="Delete stage">×</button>')
+        + '</div>';
+    }).join('');
+  }
+
+  function moveStage(name, dir){
+    var idx = state.stages.indexOf(name);
+    if(idx < 0) return;
+    var newIdx = idx + (dir === 'up' ? -1 : 1);
+    if(newIdx < 0 || newIdx >= state.stages.length) return;
+    var updated = state.stages.slice();
+    var tmp = updated[idx];
+    updated[idx] = updated[newIdx];
+    updated[newIdx] = tmp;
+    persistStages(updated).then(function(){
+      state.stages = updated;
+      renderStageManageList();
+      populateStageSelect();
+    });
+  }
+
+  function renameStage(oldName, newName){
+    newName = (newName || '').trim();
+    if(!newName || newName === oldName){ renderStageManageList(); return; }
+    if(state.stages.indexOf(newName) !== -1){
+      window.alert('That stage name already exists.');
+      renderStageManageList();
+      return;
+    }
+    var updated = state.stages.map(function(s){ return s === oldName ? newName : s; });
+    persistStages(updated).then(function(){
+      state.stages = updated;
+      renderStageManageList();
+      populateStageSelect();
+    });
+  }
+
+  function askDeleteStage(name){
+    state.confirmDeleteStage = name;
+    renderStageManageList();
+  }
+
+  function performDeleteStage(name){
+    var updated = state.stages.filter(function(s){ return s !== name; });
+    state.confirmDeleteStage = null;
+    persistStages(updated).then(function(){
+      state.stages = updated;
+      renderStageManageList();
+      populateStageSelect();
+    });
+  }
+
+  function confirmAddStageManage(){
+    var input = document.getElementById('new-stage-manage-input');
+    var name = input.value.trim();
+    if(!name){ input.focus(); return; }
+    if(state.stages.indexOf(name) !== -1){
+      window.alert('That stage already exists.');
+      return;
+    }
+    var updated = state.stages.slice();
+    if(updated.length > 0){
+      updated.splice(updated.length - 1, 0, name);
+    } else {
+      updated.push(name);
+    }
+    persistStages(updated).then(function(){
+      state.stages = updated;
+      input.value = '';
+      renderStageManageList();
+      populateStageSelect();
+    });
   }
 
   function refreshDatalists(){
@@ -1315,6 +1429,16 @@
     if(e.target.closest('#add-project-cancel')){ cancelAddProject(); return; }
     if(e.target.closest('#add-stage-confirm')){ confirmAddStage(); return; }
     if(e.target.closest('#add-stage-cancel')){ cancelAddStage(); return; }
+
+    var moveUpBtn = e.target.closest('[data-move-up]');
+    if(moveUpBtn){ moveStage(moveUpBtn.getAttribute('data-move-up'), 'up'); return; }
+    var moveDownBtn = e.target.closest('[data-move-down]');
+    if(moveDownBtn){ moveStage(moveDownBtn.getAttribute('data-move-down'), 'down'); return; }
+    var askDelBtn = e.target.closest('[data-ask-delete]');
+    if(askDelBtn){ askDeleteStage(askDelBtn.getAttribute('data-ask-delete')); return; }
+    var confirmDelBtn = e.target.closest('[data-confirm-delete]');
+    if(confirmDelBtn){ performDeleteStage(confirmDelBtn.getAttribute('data-confirm-delete')); return; }
+    if(e.target.closest('#add-stage-manage-confirm')){ confirmAddStageManage(); return; }
   });
 
   document.addEventListener('keydown', function(e){
@@ -1325,6 +1449,14 @@
     if(e.key === 'Enter' && e.target && e.target.id === 'new-stage-input'){
       e.preventDefault();
       confirmAddStage();
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'new-stage-manage-input'){
+      e.preventDefault();
+      confirmAddStageManage();
+    }
+    if(e.key === 'Enter' && e.target && e.target.classList && e.target.classList.contains('stage-name-field')){
+      e.preventDefault();
+      e.target.blur();
     }
   });
 
@@ -1357,6 +1489,9 @@
     }
     if(e.target && e.target.id === 'dash-editor-select'){
       renderEditorDetail(e.target.value);
+    }
+    if(e.target && e.target.classList && e.target.classList.contains('stage-name-field')){
+      renameStage(e.target.getAttribute('data-original'), e.target.value);
     }
   });
 
@@ -1424,6 +1559,7 @@
     loadStages().then(function(stages){
       state.stages = stages;
       populateStageSelect();
+      renderStageManageList();
     });
     if(state.identity.role === 'editor'){
       loadActiveTakes().then(function(activeTakes){
