@@ -669,7 +669,12 @@
     var name = input.value.trim();
     if(!name){ input.focus(); return; }
     if(state.stages.indexOf(name) === -1){
-      var updated = state.stages.concat([name]);
+      var updated = state.stages.slice();
+      if(updated.length > 0){
+        updated.splice(updated.length - 1, 0, name); // land before the current final stage
+      } else {
+        updated.push(name);
+      }
       persistStages(updated).then(function(){
         state.stages = updated;
         populateStageSelect(name);
