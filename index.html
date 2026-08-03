@@ -603,6 +603,24 @@
     return postAction('setStages', { stages: stages });
   }
 
+  function loadBootstrap(){
+    var defaultProjects = ['Talemiaa', 'Sharee7'];
+    var defaultStages = ['First Cut', 'B Rolls', 'Sound Design', 'Final Video'];
+    return getAction('getBootstrap')
+      .then(function(d){
+        return {
+          entries: (d && d.entries) ? d.entries : [],
+          locks: (d && d.locks) ? d.locks : {},
+          activeTakes: (d && d.activeTakes) ? d.activeTakes : {},
+          projects: (d && d.projects && d.projects.length) ? d.projects : defaultProjects,
+          stages: (d && d.stages && d.stages.length) ? d.stages : defaultStages
+        };
+      })
+      .catch(function(){
+        return { entries: [], locks: {}, activeTakes: {}, projects: defaultProjects, stages: defaultStages };
+      });
+  }
+
   function loadIdentity(){
     try{
       var raw = localStorage.getItem('ss_identity');
@@ -1537,40 +1555,36 @@
     applyRoleUI();
     tickClock();
     setInterval(tickClock, 30000);
-    loadEntries().then(function(entries){
-      state.entries = entries;
+
+    loadBootstrap().then(function(data){
+      state.entries = data.entries;
+      state.locks = data.locks;
+      state.projects = data.projects;
+      state.stages = data.stages;
+      state.allActiveTakes = data.activeTakes;
       state.loading = false;
+
       refreshDatalists();
+      populateProjectSelect();
+      populateStageSelect();
+      renderStageManageList();
       renderFeed();
+      checkVideoLock();
+
       if(state.activeTab === 'dashboard'){
         renderDashboard();
         populateDashVideoSelect();
         populateDashEditorSelect();
       }
-    });
-    loadLocks().then(function(locks){
-      state.locks = locks;
-      checkVideoLock();
-    });
-    loadProjects().then(function(projects){
-      state.projects = projects;
-      populateProjectSelect();
-    });
-    loadStages().then(function(stages){
-      state.stages = stages;
-      populateStageSelect();
-      renderStageManageList();
-    });
-    if(state.identity.role === 'editor'){
-      loadActiveTakes().then(function(activeTakes){
-        state.allActiveTakes = activeTakes;
-        var mine = activeTakes[state.identity.name];
+
+      if(state.identity.role === 'editor'){
+        var mine = data.activeTakes[state.identity.name];
         if(mine){
           state.activeTake = mine;
           enterActiveTakeUI();
         }
-      });
-    }
+      }
+    });
   }
 
   /* ---------- init ---------- */
