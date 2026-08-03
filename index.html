@@ -134,6 +134,14 @@
   }
   .dur-sep{color:var(--navy-faint);font-family:var(--font-display);font-weight:700;}
 
+  .add-new-row{display:flex;gap:8px;align-items:center;margin-top:8px;}
+  .add-new-row input[type=text]{
+    flex:1;background:var(--cream);border:2px solid var(--line);color:var(--navy);
+    padding:8px 11px;border-radius:9px;font-family:var(--font-body);font-size:13px;
+  }
+  .add-new-row input[type=text]:focus-visible{outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo);}
+  .btn-small{padding:8px 14px;font-size:12px;box-shadow:0 2px 0 var(--navy);flex:none;}
+
   .btn-primary{
     background:var(--yellow);color:var(--navy);border:2px solid var(--navy);padding:11px 22px;
     border-radius:10px;font-family:var(--font-display);font-weight:800;font-size:13px;
@@ -322,11 +330,21 @@
         <div class="field">
           <label for="f-project">Project</label>
           <select id="f-project"></select>
+          <div class="add-new-row" id="add-project-row" style="display:none;">
+            <input type="text" id="new-project-input" placeholder="New project name" dir="auto">
+            <button type="button" class="btn-primary btn-small" id="add-project-confirm">Add</button>
+            <button type="button" class="switch-link" id="add-project-cancel">Cancel</button>
+          </div>
         </div>
 
         <div class="field">
           <label for="f-stage">Stage</label>
           <select id="f-stage"></select>
+          <div class="add-new-row" id="add-stage-row" style="display:none;">
+            <input type="text" id="new-stage-input" placeholder="New stage name" dir="auto">
+            <button type="button" class="btn-primary btn-small" id="add-stage-confirm">Add</button>
+            <button type="button" class="switch-link" id="add-stage-cancel">Cancel</button>
+          </div>
         </div>
 
         <div class="field">
@@ -619,6 +637,56 @@
       return '<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>';
     }).join('') + '<option value="__add_new__">+ Add new stage…</option>';
     if(current && state.stages.indexOf(current) !== -1){ sel.value = current; }
+  }
+
+  function confirmAddProject(){
+    var input = document.getElementById('new-project-input');
+    var name = input.value.trim();
+    if(!name){ input.focus(); return; }
+    if(state.projects.indexOf(name) === -1){
+      var updated = state.projects.concat([name]);
+      persistProjects(updated).then(function(){
+        state.projects = updated;
+        populateProjectSelect(name);
+        cancelAddProject();
+      });
+    } else {
+      populateProjectSelect(name);
+      cancelAddProject();
+    }
+  }
+
+  function cancelAddProject(){
+    document.getElementById('add-project-row').style.display = 'none';
+    document.getElementById('new-project-input').value = '';
+    if(document.getElementById('f-project').value === '__add_new__'){
+      populateProjectSelect(state.projects[0] || '');
+    }
+  }
+
+  function confirmAddStage(){
+    var input = document.getElementById('new-stage-input');
+    var name = input.value.trim();
+    if(!name){ input.focus(); return; }
+    if(state.stages.indexOf(name) === -1){
+      var updated = state.stages.concat([name]);
+      persistStages(updated).then(function(){
+        state.stages = updated;
+        populateStageSelect(name);
+        cancelAddStage();
+      });
+    } else {
+      populateStageSelect(name);
+      cancelAddStage();
+    }
+  }
+
+  function cancelAddStage(){
+    document.getElementById('add-stage-row').style.display = 'none';
+    document.getElementById('new-stage-input').value = '';
+    if(document.getElementById('f-stage').value === '__add_new__'){
+      populateStageSelect(state.stages[0] || '');
+    }
   }
 
   function refreshDatalists(){
@@ -1237,6 +1305,22 @@
 
     var exportEditorBtn = e.target.closest('#export-editor-btn');
     if(exportEditorBtn){ exportEditorReport(exportEditorBtn.getAttribute('data-editor')); return; }
+
+    if(e.target.closest('#add-project-confirm')){ confirmAddProject(); return; }
+    if(e.target.closest('#add-project-cancel')){ cancelAddProject(); return; }
+    if(e.target.closest('#add-stage-confirm')){ confirmAddStage(); return; }
+    if(e.target.closest('#add-stage-cancel')){ cancelAddStage(); return; }
+  });
+
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && e.target && e.target.id === 'new-project-input'){
+      e.preventDefault();
+      confirmAddProject();
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'new-stage-input'){
+      e.preventDefault();
+      confirmAddStage();
+    }
   });
 
   document.addEventListener('submit', function(e){
@@ -1249,32 +1333,18 @@
   document.addEventListener('change', function(e){
     if(e.target && e.target.id === 'f-project'){
       if(e.target.value === '__add_new__'){
-        var name = window.prompt('New project name:');
-        name = name ? name.trim() : '';
-        if(name && state.projects.indexOf(name) === -1){
-          var updated = state.projects.concat([name]);
-          persistProjects(updated).then(function(){
-            state.projects = updated;
-            populateProjectSelect(name);
-          });
-        } else {
-          populateProjectSelect(state.projects[0] || '');
-        }
+        document.getElementById('add-project-row').style.display = 'flex';
+        document.getElementById('new-project-input').focus();
+      } else {
+        document.getElementById('add-project-row').style.display = 'none';
       }
     }
     if(e.target && e.target.id === 'f-stage'){
       if(e.target.value === '__add_new__'){
-        var stageName = window.prompt('New stage name:');
-        stageName = stageName ? stageName.trim() : '';
-        if(stageName && state.stages.indexOf(stageName) === -1){
-          var updatedStages = state.stages.concat([stageName]);
-          persistStages(updatedStages).then(function(){
-            state.stages = updatedStages;
-            populateStageSelect(stageName);
-          });
-        } else {
-          populateStageSelect(state.stages[0] || '');
-        }
+        document.getElementById('add-stage-row').style.display = 'flex';
+        document.getElementById('new-stage-input').focus();
+      } else {
+        document.getElementById('add-stage-row').style.display = 'none';
       }
     }
     if(e.target && e.target.id === 'dash-video-select'){
