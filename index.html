@@ -160,6 +160,11 @@
   .stage-delete.confirm{color:#fff;background:var(--red);font-size:11px;font-family:var(--font-display);
     font-weight:700;padding:6px 10px;white-space:nowrap;}
 
+  .editor-manage-name{flex:1;font-family:var(--font-body);font-weight:700;font-size:13px;color:var(--navy);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .reset-pw-input{flex:1;background:var(--cream);border:2px solid var(--line);color:var(--navy);
+    padding:6px 10px;border-radius:8px;font-family:var(--font-body);font-size:12px;min-width:0;}
+
   .btn-primary{
     background:var(--yellow);color:var(--navy);border:2px solid var(--navy);padding:11px 22px;
     border-radius:10px;font-family:var(--font-display);font-weight:800;font-size:13px;
@@ -422,6 +427,18 @@
       <div class="editor-row-sub" style="margin-top:10px;">Renaming only affects new takes going forward — past entries keep their original stage name.</div>
     </div>
 
+    <div class="card">
+      <div class="card-head">Manage editors</div>
+      <div id="editor-manage-list"></div>
+      <div class="add-new-row">
+        <input type="text" id="new-editor-name-input" placeholder="Editor name" dir="auto">
+        <input type="text" id="new-editor-password-input" placeholder="Password" style="max-width:110px;">
+        <button type="button" class="btn-primary btn-small" id="add-editor-confirm">Add</button>
+      </div>
+      <div class="form-error" id="editor-manage-error"></div>
+      <div class="editor-row-sub" style="margin-top:2px;">Removing an editor only affects who can log in — their past entries stay in every report.</div>
+    </div>
+
     <button type="button" class="btn-primary" id="export-all-btn" style="margin-bottom:16px;">Export monthly report — all editors ⤓</button>
 
     <div class="period-toggle">
@@ -486,7 +503,7 @@
     }
   }; // local fallback only — Firestore seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, activeTake: null, allActiveTakes: {}, timerInterval: null };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, activeTake: null, allActiveTakes: {}, timerInterval: null };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -1248,6 +1265,105 @@
     document.getElementById('take-setup').style.display = 'block';
   }
 
+  /* ---------- manage editors (manager dashboard) ---------- */
+  function renderEditorManageList(){
+    var wrap = document.getElementById('editor-manage-list');
+    if(!wrap || !state.credentials) return;
+    var names = Object.keys(state.credentials.editors).sort();
+    wrap.innerHTML = names.map(function(name){
+      var isConfirm = state.confirmDeleteEditor === name;
+      var isResetting = state.resettingEditor === name;
+      var row = '<div class="stage-manage-row"><div class="editor-manage-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</div>';
+      if(isResetting){
+        row += '<input type="text" class="reset-pw-input" id="reset-pw-input" placeholder="New password" data-editor="'+escapeHtml(name)+'">'
+          + '<button type="button" class="btn-primary btn-small" data-confirm-reset="'+escapeHtml(name)+'">Save</button>'
+          + '<button type="button" class="switch-link" data-cancel-reset="'+escapeHtml(name)+'">Cancel</button>';
+      } else {
+        row += '<button type="button" class="switch-link" data-ask-reset="'+escapeHtml(name)+'">reset password</button>';
+        if(isConfirm){
+          row += '<button type="button" class="stage-delete confirm" data-confirm-delete-editor="'+escapeHtml(name)+'">Confirm?</button>';
+        } else {
+          row += '<button type="button" class="stage-delete" data-ask-delete-editor="'+escapeHtml(name)+'" aria-label="Remove editor">×</button>';
+        }
+      }
+      row += '</div>';
+      return row;
+    }).join('');
+  }
+
+  function setEditorManageError(msg){
+    var el = document.getElementById('editor-manage-error');
+    if(el){ el.textContent = msg || ''; }
+  }
+
+  function askDeleteEditor(name){
+    state.confirmDeleteEditor = name;
+    renderEditorManageList();
+  }
+
+  function performDeleteEditor(name){
+    setEditorManageError('');
+    var updated = JSON.parse(JSON.stringify(state.credentials));
+    delete updated.editors[name];
+    state.confirmDeleteEditor = null;
+    persistCredentials(updated).then(function(res){
+      if(res && res.error){ setEditorManageError("Couldn't remove — try again."); return; }
+      state.credentials = updated;
+      renderEditorManageList();
+    });
+  }
+
+  function askResetEditor(name){
+    setEditorManageError('');
+    state.resettingEditor = name;
+    renderEditorManageList();
+    setTimeout(function(){
+      var el = document.getElementById('reset-pw-input');
+      if(el){ el.focus(); }
+    }, 0);
+  }
+
+  function cancelResetEditor(){
+    state.resettingEditor = null;
+    renderEditorManageList();
+  }
+
+  function confirmResetEditor(name){
+    var input = document.getElementById('reset-pw-input');
+    var pw = input ? input.value.trim() : '';
+    if(!pw || pw.length < 4){ setEditorManageError('New password must be at least 4 characters.'); return; }
+    setEditorManageError('');
+    var updated = JSON.parse(JSON.stringify(state.credentials));
+    updated.editors[name] = pw;
+    state.resettingEditor = null;
+    persistCredentials(updated).then(function(res){
+      if(res && res.error){ setEditorManageError("Couldn't save — try again."); return; }
+      state.credentials = updated;
+      renderEditorManageList();
+    });
+  }
+
+  function confirmAddEditor(){
+    var nameInput = document.getElementById('new-editor-name-input');
+    var pwInput = document.getElementById('new-editor-password-input');
+    var name = nameInput.value.trim();
+    var pw = pwInput.value.trim();
+    if(!name){ setEditorManageError('Enter a name for the new editor.'); nameInput.focus(); return; }
+    if(state.credentials.editors.hasOwnProperty(name)){ setEditorManageError('That editor already exists.'); return; }
+    if(!pw || pw.length < 4){ setEditorManageError('Password must be at least 4 characters.'); pwInput.focus(); return; }
+    setEditorManageError('');
+    var updated = JSON.parse(JSON.stringify(state.credentials));
+    updated.editors[name] = pw;
+    persistCredentials(updated).then(function(res){
+      if(res && res.error){ setEditorManageError("Couldn't add — try again."); return; }
+      state.credentials = updated;
+      nameInput.value = '';
+      pwInput.value = '';
+      renderEditorManageList();
+    });
+  }
+
+
   /* ---------- actions ---------- */
   function startTake(){
     var editor = document.getElementById('f-editor').value.trim();
@@ -1477,6 +1593,18 @@
     var confirmDelBtn = e.target.closest('[data-confirm-delete]');
     if(confirmDelBtn){ performDeleteStage(confirmDelBtn.getAttribute('data-confirm-delete')); return; }
     if(e.target.closest('#add-stage-manage-confirm')){ confirmAddStageManage(); return; }
+
+    var askDelEditorBtn = e.target.closest('[data-ask-delete-editor]');
+    if(askDelEditorBtn){ askDeleteEditor(askDelEditorBtn.getAttribute('data-ask-delete-editor')); return; }
+    var confirmDelEditorBtn = e.target.closest('[data-confirm-delete-editor]');
+    if(confirmDelEditorBtn){ performDeleteEditor(confirmDelEditorBtn.getAttribute('data-confirm-delete-editor')); return; }
+    var askResetBtn = e.target.closest('[data-ask-reset]');
+    if(askResetBtn){ askResetEditor(askResetBtn.getAttribute('data-ask-reset')); return; }
+    var cancelResetBtn = e.target.closest('[data-cancel-reset]');
+    if(cancelResetBtn){ cancelResetEditor(); return; }
+    var confirmResetBtn = e.target.closest('[data-confirm-reset]');
+    if(confirmResetBtn){ confirmResetEditor(confirmResetBtn.getAttribute('data-confirm-reset')); return; }
+    if(e.target.closest('#add-editor-confirm')){ confirmAddEditor(); return; }
   });
 
   document.addEventListener('keydown', function(e){
@@ -1495,6 +1623,14 @@
     if(e.key === 'Enter' && e.target && e.target.classList && e.target.classList.contains('stage-name-field')){
       e.preventDefault();
       e.target.blur();
+    }
+    if(e.key === 'Enter' && e.target && (e.target.id === 'new-editor-name-input' || e.target.id === 'new-editor-password-input')){
+      e.preventDefault();
+      confirmAddEditor();
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'reset-pw-input'){
+      e.preventDefault();
+      confirmResetEditor(e.target.getAttribute('data-editor'));
     }
   });
 
@@ -1588,6 +1724,7 @@
       populateProjectSelect();
       populateStageSelect();
       renderStageManageList();
+      renderEditorManageList();
       renderFeed();
       checkVideoLock();
 
