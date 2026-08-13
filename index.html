@@ -130,6 +130,13 @@
     letter-spacing:.02em;margin:8px 0 18px;}
   .btn-end{background:var(--red);color:#fff;box-shadow:0 3px 0 var(--navy);}
   .btn-end:hover{filter:brightness(1.08);}
+  .btn-pause{background:var(--orange);color:var(--navy);box-shadow:0 3px 0 var(--navy);}
+  .btn-pause:hover{filter:brightness(1.05);}
+  #pause-banner{background:var(--orange-tint);border:2px dashed var(--orange);border-radius:12px;
+    padding:14px;margin-bottom:14px;}
+  .pause-badge{font-family:var(--font-display);font-weight:800;font-size:14px;color:#B8460B;margin-bottom:8px;}
+  .pause-flag{font-family:var(--font-body);font-size:10px;color:var(--navy-faint);background:var(--cream-deep);
+    padding:2px 7px;border-radius:8px;flex:none;cursor:help;white-space:nowrap;}
   .dur-row select{
     background:var(--cream);border:2px solid var(--line);color:var(--navy);
     padding:9px 10px;border-radius:9px;font-family:var(--font-body);font-size:14px;
@@ -384,11 +391,24 @@
       <div class="card-head">Take in progress</div>
       <div class="active-take-summary" id="active-take-summary"></div>
       <div class="timer-display" id="timer-display">0:00:00</div>
+
+      <div id="pause-banner" style="display:none;">
+        <div class="pause-badge">⏸ Paused — <span id="pause-timer-display">0:00:00</span></div>
+        <div class="field">
+          <label for="pause-reason-input">Reason for pausing (optional)</label>
+          <input type="text" id="pause-reason-input" dir="auto" placeholder="e.g. lunch, meeting, waiting on files">
+        </div>
+        <button type="button" class="btn-primary" id="resume-btn">▶ Resume</button>
+      </div>
+
       <div class="field">
         <label for="f-notes-active">Notes (optional)</label>
         <textarea id="f-notes-active" dir="auto" placeholder="What happened in this session?"></textarea>
       </div>
-      <button type="button" class="btn-primary btn-end" id="end-btn">■ End Take</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="button" class="btn-primary btn-pause" id="pause-btn">⏸ Pause</button>
+        <button type="button" class="btn-primary btn-end" id="end-btn">■ End Take</button>
+      </div>
       <div class="form-error" id="end-error"></div>
     </div>
 
@@ -548,6 +568,22 @@
     var mm = Math.floor((totalSec % 3600) / 60);
     var ss = totalSec % 60;
     return hh + ':' + pad(mm) + ':' + pad(ss);
+  }
+
+  function computeWorkedMs(take, nowMs){
+    nowMs = nowMs || Date.now();
+    var totalMs = nowMs - new Date(take.startedAt).getTime();
+    var pausedMs = (take.pauseLog || []).reduce(function(s,p){ return s + p.durationMs; }, 0);
+    if(take.paused && take.pausedAt){
+      pausedMs += nowMs - new Date(take.pausedAt).getTime();
+    }
+    return Math.max(0, totalMs - pausedMs);
+  }
+
+  function pauseBadgeHtml(entry){
+    if(!entry.pauseCount){ return ''; }
+    var reasons = (entry.pauses || []).map(function(p){ return p.reason || 'no reason given'; }).join('; ');
+    return ' <span class="pause-flag" title="'+escapeHtml(reasons)+'">⏸'+entry.pauseCount+' · '+(entry.pausedMinutes||0)+'m</span>';
   }
 
   function formatDateLabel(dateStr){
@@ -921,6 +957,7 @@
         + '<div class="feed-video" title="'+escapeHtml(e.video)+' · '+escapeHtml(e.project||'')+'">'+videoLabel+'</div>'
         + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
         + '<div class="feed-dur">'+formatHM(e.hours)+'</div>'
+        + pauseBadgeHtml(e)
         + '<div class="feed-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes)+'</div>'
         + '</div>';
     }).join('');
@@ -994,6 +1031,7 @@
         + '<div class="vh-editor" title="'+escapeHtml(e.editor)+'">'+escapeHtml(e.editor)+'</div>'
         + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
         + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
+        + pauseBadgeHtml(e)
         + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
         + '</div>';
     }).join('');
@@ -1027,12 +1065,18 @@
 
     var totalHours = rows.reduce(function(s,e){ return s + e.hours; }, 0);
     var videoCount = new Set(rows.map(function(e){ return e.video; })).size;
+    var totalPauseCount = rows.reduce(function(s,e){ return s + (e.pauseCount||0); }, 0);
+    var totalPausedMin = rows.reduce(function(s,e){ return s + (e.pausedMinutes||0); }, 0);
 
     var html = '';
     html += '<div class="video-detail-head">'
       + '<div class="video-detail-title">' + escapeHtml(editorName) + ' <span style="color:var(--navy-faint);font-weight:600;font-size:13px;">· '+escapeHtml(monthLabel())+'</span></div>'
       + '<div class="video-detail-total">' + formatHM(totalHours) + ' · ' + videoCount + ' video' + (videoCount===1?'':'s') + '</div>'
       + '</div>';
+
+    if(totalPauseCount > 0){
+      html += '<div class="editor-row-sub" style="margin-bottom:10px;">'+totalPauseCount+' pause'+(totalPauseCount===1?'':'s')+' this month · '+totalPausedMin+'m total paused</div>';
+    }
 
     html += '<button type="button" class="switch-link" id="export-editor-btn" data-editor="'+escapeHtml(editorName)+'" style="margin:2px 0 12px;">Export this editor\'s report (CSV)</button>';
 
@@ -1047,6 +1091,7 @@
           + '<div class="vh-editor" title="'+escapeHtml(e.video)+'">'+videoLabel+'</div>'
           + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
           + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
+          + pauseBadgeHtml(e)
           + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
           + '</div>';
       }).join('');
@@ -1082,13 +1127,21 @@
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   }
 
+  function pauseReasonsJoined(entry){
+    return (entry.pauses || []).map(function(p){ return p.reason || ''; }).filter(Boolean).join('; ');
+  }
+
   function exportMonthlyReport(){
     var monthStart = monthStartStr();
-    var headers = ['Editor','Date','Video','Project','Stage','Hours','Notes'];
+    var headers = ['Editor','Date','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Notes'];
     var rows = state.entries.filter(function(e){ return e.date >= monthStart; })
       .sort(function(a,b){ return a.editor.localeCompare(b.editor) || a.date.localeCompare(b.date); })
       .map(function(e){
-        return { Editor: e.editor, Date: e.date, Video: e.video, Project: e.project || '', Stage: e.stage, Hours: e.hours.toFixed(2), Notes: e.notes || '' };
+        return {
+          Editor: e.editor, Date: e.date, Video: e.video, Project: e.project || '', Stage: e.stage,
+          Hours: e.hours.toFixed(2), Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
+          'Pause Reasons': pauseReasonsJoined(e), Notes: e.notes || ''
+        };
       });
     if(rows.length === 0){ window.alert('Nothing logged this month yet.'); return; }
     downloadCSV('science-street-monthly-report-' + monthStart.slice(0,7) + '.csv', toCSV(headers, rows));
@@ -1096,11 +1149,15 @@
 
   function exportEditorReport(editorName){
     var monthStart = monthStartStr();
-    var headers = ['Date','Video','Project','Stage','Hours','Notes'];
+    var headers = ['Date','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Notes'];
     var rows = state.entries.filter(function(e){ return e.editor === editorName && e.date >= monthStart; })
       .sort(function(a,b){ return a.date.localeCompare(b.date); })
       .map(function(e){
-        return { Date: e.date, Video: e.video, Project: e.project || '', Stage: e.stage, Hours: e.hours.toFixed(2), Notes: e.notes || '' };
+        return {
+          Date: e.date, Video: e.video, Project: e.project || '', Stage: e.stage, Hours: e.hours.toFixed(2),
+          Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
+          'Pause Reasons': pauseReasonsJoined(e), Notes: e.notes || ''
+        };
       });
     if(rows.length === 0){ window.alert('Nothing logged this month yet for this editor.'); return; }
     var safeName = editorName.replace(/[^a-z0-9]+/gi, '-');
@@ -1242,9 +1299,12 @@
   /* ---------- live timer UI ---------- */
   function tickTimer(){
     if(!state.activeTake) return;
-    var started = new Date(state.activeTake.startedAt).getTime();
     var el = document.getElementById('timer-display');
-    if(el){ el.textContent = formatHMS(Date.now() - started); }
+    if(el){ el.textContent = formatHMS(computeWorkedMs(state.activeTake)); }
+    if(state.activeTake.paused && state.activeTake.pausedAt){
+      var pel = document.getElementById('pause-timer-display');
+      if(pel){ pel.textContent = formatHMS(Date.now() - new Date(state.activeTake.pausedAt).getTime()); }
+    }
   }
 
   function enterActiveTakeUI(){
@@ -1254,6 +1314,9 @@
     document.getElementById('active-take-summary').innerHTML =
       '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage);
     document.getElementById('f-notes-active').value = at.notes || '';
+    document.getElementById('pause-banner').style.display = at.paused ? 'block' : 'none';
+    document.getElementById('pause-btn').style.display = at.paused ? 'none' : 'inline-block';
+    document.getElementById('pause-reason-input').value = at.pauseReason || '';
     tickTimer();
     if(state.timerInterval){ clearInterval(state.timerInterval); }
     state.timerInterval = setInterval(tickTimer, 1000);
@@ -1263,6 +1326,45 @@
     if(state.timerInterval){ clearInterval(state.timerInterval); state.timerInterval = null; }
     document.getElementById('take-active').style.display = 'none';
     document.getElementById('take-setup').style.display = 'block';
+  }
+
+  function pauseTake(){
+    if(!state.activeTake || state.activeTake.paused) return;
+    var editor = state.identity.name;
+    var take = Object.assign({}, state.activeTake);
+    take.notes = document.getElementById('f-notes-active').value.trim();
+    take.paused = true;
+    take.pausedAt = new Date().toISOString();
+    take.pauseReason = '';
+    setActiveTakeDoc(editor, take).then(function(res){
+      if(res && res.error){ return; }
+      state.activeTake = take;
+      state.allActiveTakes[editor] = take;
+      enterActiveTakeUI();
+    });
+  }
+
+  function resumeTake(){
+    if(!state.activeTake || !state.activeTake.paused) return;
+    var editor = state.identity.name;
+    var reasonInput = document.getElementById('pause-reason-input');
+    var reason = reasonInput ? reasonInput.value.trim() : '';
+    var take = Object.assign({}, state.activeTake);
+    var pausedAtMs = new Date(take.pausedAt).getTime();
+    var nowIso = new Date().toISOString();
+    var pauseLog = (take.pauseLog || []).concat([{
+      pausedAt: take.pausedAt, resumedAt: nowIso, reason: reason, durationMs: Date.now() - pausedAtMs
+    }]);
+    take.paused = false;
+    take.pausedAt = null;
+    take.pauseReason = '';
+    take.pauseLog = pauseLog;
+    setActiveTakeDoc(editor, take).then(function(res){
+      if(res && res.error){ return; }
+      state.activeTake = take;
+      state.allActiveTakes[editor] = take;
+      enterActiveTakeUI();
+    });
   }
 
   /* ---------- manage editors (manager dashboard) ---------- */
@@ -1392,7 +1494,11 @@
       project: project,
       stage: stage,
       notes: notes,
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
+      paused: false,
+      pausedAt: null,
+      pauseReason: '',
+      pauseLog: []
     };
 
     var btn = document.getElementById('start-btn');
@@ -1423,8 +1529,21 @@
     var errEl = document.getElementById('end-error');
     errEl.textContent = '';
 
+    var pauseLog = (take.pauseLog || []).slice();
+    if(take.paused && take.pausedAt){
+      var reasonInput = document.getElementById('pause-reason-input');
+      var reason = reasonInput ? reasonInput.value.trim() : (take.pauseReason || '');
+      pauseLog.push({
+        pausedAt: take.pausedAt, resumedAt: new Date().toISOString(), reason: reason,
+        durationMs: Date.now() - new Date(take.pausedAt).getTime()
+      });
+    }
+
     var startedMs = new Date(take.startedAt).getTime();
-    var hours = (Date.now() - startedMs) / 3600000;
+    var totalMs = Date.now() - startedMs;
+    var pausedMs = pauseLog.reduce(function(s,p){ return s + p.durationMs; }, 0);
+    var workedMs = Math.max(0, totalMs - pausedMs);
+    var hours = workedMs / 3600000;
     if(hours <= 0){ hours = 0.01; }
 
     var entry = {
@@ -1436,7 +1555,10 @@
       hours: hours,
       notes: notes,
       date: todayStr(new Date(startedMs)),
-      loggedAt: new Date().toISOString()
+      loggedAt: new Date().toISOString(),
+      pauseCount: pauseLog.length,
+      pausedMinutes: Math.round(pausedMs / 60000),
+      pauses: pauseLog
     };
 
     var btn = document.getElementById('end-btn');
@@ -1573,6 +1695,12 @@
     var endBtn = e.target.closest('#end-btn');
     if(endBtn){ endTake(); return; }
 
+    var pauseBtn = e.target.closest('#pause-btn');
+    if(pauseBtn){ pauseTake(); return; }
+
+    var resumeBtn = e.target.closest('#resume-btn');
+    if(resumeBtn){ resumeTake(); return; }
+
     var exportAllBtn = e.target.closest('#export-all-btn');
     if(exportAllBtn){ exportMonthlyReport(); return; }
 
@@ -1631,6 +1759,10 @@
     if(e.key === 'Enter' && e.target && e.target.id === 'reset-pw-input'){
       e.preventDefault();
       confirmResetEditor(e.target.getAttribute('data-editor'));
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'pause-reason-input'){
+      e.preventDefault();
+      resumeTake();
     }
   });
 
