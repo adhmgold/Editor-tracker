@@ -9,6 +9,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#332FD1">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SS Tracker">
 <style>
   :root{
     --cream:#F5F2E8;
@@ -137,6 +143,18 @@
   .pause-badge{font-family:var(--font-display);font-weight:800;font-size:14px;color:#B8460B;margin-bottom:8px;}
   .pause-flag{font-family:var(--font-body);font-size:10px;color:var(--navy-faint);background:var(--cream-deep);
     padding:2px 7px;border-radius:8px;flex:none;cursor:help;white-space:nowrap;}
+
+  .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--teal);
+    margin-left:6px;animation:livepulse 1.6s infinite;}
+  @keyframes livepulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(14,154,108,.55);}
+    50%{box-shadow:0 0 0 5px rgba(14,154,108,0);}
+  }
+  .cw-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:13px;}
+  .cw-row:last-child{border-bottom:none;}
+  .cw-editor{font-weight:700;width:90px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cw-detail{flex:1;color:var(--navy-soft);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cw-timer{font-family:var(--font-display);font-weight:700;color:var(--indigo);width:70px;flex:none;text-align:right;}
   .dur-row select{
     background:var(--cream);border:2px solid var(--line);color:var(--navy);
     padding:9px 10px;border-radius:9px;font-family:var(--font-body);font-size:14px;
@@ -244,6 +262,9 @@
   @keyframes segpulse{
     0%,100%{box-shadow:0 0 0 0 rgba(51,47,209,.5);}
     50%{box-shadow:0 0 6px 1px rgba(51,47,209,.5);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .live-dot,.seg.current{animation:none;}
   }
   .video-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--navy-faint);
     font-family:var(--font-body);font-weight:500;}
@@ -422,6 +443,11 @@
 
   <div class="panel" id="panel-dashboard">
     <div class="card">
+      <div class="card-head">Currently working <span class="live-dot" aria-hidden="true"></span></div>
+      <div id="currently-working-list"><div class="empty-state">Loading…</div></div>
+    </div>
+
+    <div class="card">
       <div class="card-head">Look up a video</div>
       <select id="dash-video-select">
         <option value="">Select a video…</option>
@@ -586,6 +612,35 @@
     return ' <span class="pause-flag" title="'+escapeHtml(reasons)+'">⏸'+entry.pauseCount+' · '+(entry.pausedMinutes||0)+'m</span>';
   }
 
+  function renderActiveTakesPanel(){
+    var wrap = document.getElementById('currently-working-list');
+    if(!wrap) return;
+    var names = Object.keys(state.allActiveTakes).sort();
+    if(names.length === 0){
+      wrap.innerHTML = '<div class="empty-state">No one is actively working right now.</div>';
+      return;
+    }
+    wrap.innerHTML = names.map(function(name){
+      var t = state.allActiveTakes[name];
+      var statusTxt = t.paused ? 'Paused' : 'Working';
+      var statusColor = t.paused ? 'orange' : 'teal';
+      return '<div class="cw-row">'
+        + '<div class="cw-editor" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</div>'
+        + '<div class="cw-detail" title="'+escapeHtml(t.video)+' · '+escapeHtml(t.project)+' · '+escapeHtml(t.stage)+'">'+escapeHtml(t.video)+' <span style="color:var(--navy-faint);">· '+escapeHtml(t.project)+' · '+escapeHtml(t.stage)+'</span></div>'
+        + '<div class="feed-stage tag-color-'+statusColor+'">'+statusTxt+'</div>'
+        + '<div class="cw-timer" data-live-timer="'+escapeHtml(name)+'">'+formatHMS(computeWorkedMs(t))+'</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  function tickActiveTakesPanel(){
+    document.querySelectorAll('[data-live-timer]').forEach(function(el){
+      var name = el.getAttribute('data-live-timer');
+      var t = state.allActiveTakes[name];
+      if(t){ el.textContent = formatHMS(computeWorkedMs(t)); }
+    });
+  }
+
   function formatDateLabel(dateStr){
     var parts = dateStr.split('-').map(Number);
     var d = new Date(parts[0], parts[1]-1, parts[2]);
@@ -691,11 +746,20 @@
     return persistListConfig('stages', stages);
   }
 
-  function loadBootstrap(){
-    return Promise.all([loadEntries(), loadLocks(), loadActiveTakes(), loadProjects(), loadStages()])
-      .then(function(r){
-        return { entries: r[0], locks: r[1], activeTakes: r[2], projects: r[3], stages: r[4] };
-      });
+  function watchCollection(name, onUpdate){
+    return db.collection(name).onSnapshot(function(snap){
+      var map = {};
+      snap.forEach(function(doc){ map[doc.id] = doc.data(); });
+      onUpdate(map);
+    }, function(){ /* ignore transient listener errors; last-known state stays on screen */ });
+  }
+
+  function watchEntries(onUpdate){
+    return db.collection('entries').onSnapshot(function(snap){
+      var arr = [];
+      snap.forEach(function(doc){ arr.push(doc.data()); });
+      onUpdate(arr);
+    }, function(){});
   }
 
   function loadIdentity(){
@@ -1843,39 +1907,76 @@
     applyRoleUI();
     tickClock();
     setInterval(tickClock, 30000);
+    setInterval(tickActiveTakesPanel, 1000);
 
-    loadBootstrap().then(function(data){
-      state.entries = data.entries;
-      state.locks = data.locks;
-      state.projects = data.projects;
-      state.stages = data.stages;
-      state.allActiveTakes = data.activeTakes;
-      state.loading = false;
+    renderEditorManageList();
 
-      refreshDatalists();
+    loadProjects().then(function(projects){
+      state.projects = projects;
       populateProjectSelect();
+    });
+
+    loadStages().then(function(stages){
+      state.stages = stages;
       populateStageSelect();
       renderStageManageList();
-      renderEditorManageList();
+    });
+
+    watchEntries(function(entries){
+      state.entries = entries;
+      state.loading = false;
+      refreshDatalists();
       renderFeed();
-      checkVideoLock();
 
       if(state.activeTab === 'dashboard'){
         renderDashboard();
         populateDashVideoSelect();
         populateDashEditorSelect();
+        var vsel = document.getElementById('dash-video-select');
+        if(vsel && vsel.value){ renderVideoDetail(vsel.value); }
+        var esel = document.getElementById('dash-editor-select');
+        if(esel && esel.value){ renderEditorDetail(esel.value); }
       }
+    });
+
+    watchCollection('locks', function(locks){
+      state.locks = locks;
+      checkVideoLock();
+    });
+
+    watchCollection('activeTakes', function(activeTakes){
+      state.allActiveTakes = activeTakes;
 
       if(state.identity.role === 'editor'){
-        var mine = data.activeTakes[state.identity.name];
-        if(mine){
+        var mine = activeTakes[state.identity.name];
+        var wasActive = !!state.activeTake;
+        if(mine && !wasActive){
           state.activeTake = mine;
           enterActiveTakeUI();
+        } else if(mine && wasActive){
+          // Keep paused/timer state in sync without touching the notes field,
+          // so an in-progress typed note never gets overwritten by a stale sync.
+          state.activeTake = mine;
+          var pb = document.getElementById('pause-banner');
+          var pbtn = document.getElementById('pause-btn');
+          if(pb && pbtn){
+            pb.style.display = mine.paused ? 'block' : 'none';
+            pbtn.style.display = mine.paused ? 'none' : 'inline-block';
+          }
+        } else if(!mine && wasActive){
+          state.activeTake = null;
+          exitActiveTakeUI();
         } else {
           var startBtn = document.getElementById('start-btn');
-          startBtn.disabled = false;
-          startBtn.textContent = 'Start Take ▸';
+          if(startBtn && startBtn.disabled){
+            startBtn.disabled = false;
+            startBtn.textContent = 'Start Take ▸';
+          }
         }
+      }
+
+      if(state.activeTab === 'dashboard'){
+        renderActiveTakesPanel();
       }
     });
   }
@@ -1918,6 +2019,13 @@
     });
   }
 })();
+</script>
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('./sw.js').catch(function(){});
+    });
+  }
 </script>
 </body>
 </html>
