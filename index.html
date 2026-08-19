@@ -549,7 +549,7 @@
     }
   }; // local fallback only — Firestore seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, activeTake: null, allActiveTakes: {}, timerInterval: null };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, activeTake: null, allActiveTakes: {}, timerInterval: null };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -624,11 +624,16 @@
       var t = state.allActiveTakes[name];
       var statusTxt = t.paused ? 'Paused' : 'Working';
       var statusColor = t.paused ? 'orange' : 'teal';
+      var isConfirm = state.confirmForceEnd === name;
+      var endBtnHtml = isConfirm
+        ? '<button type="button" class="stage-delete confirm" data-confirm-force-end="'+escapeHtml(name)+'">End it?</button>'
+        : '<button type="button" class="switch-link" data-ask-force-end="'+escapeHtml(name)+'">end</button>';
       return '<div class="cw-row">'
         + '<div class="cw-editor" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</div>'
         + '<div class="cw-detail" title="'+escapeHtml(t.video)+' · '+escapeHtml(t.project)+' · '+escapeHtml(t.stage)+'">'+escapeHtml(t.video)+' <span style="color:var(--navy-faint);">· '+escapeHtml(t.project)+' · '+escapeHtml(t.stage)+'</span></div>'
         + '<div class="feed-stage tag-color-'+statusColor+'">'+statusTxt+'</div>'
         + '<div class="cw-timer" data-live-timer="'+escapeHtml(name)+'">'+formatHMS(computeWorkedMs(t))+'</div>'
+        + endBtnHtml
         + '</div>';
     }).join('');
   }
@@ -1585,18 +1590,10 @@
     });
   }
 
-  function endTake(){
-    if(!state.activeTake) return;
-    var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
-    var take = state.activeTake;
-    var notes = document.getElementById('f-notes-active').value.trim();
-    var errEl = document.getElementById('end-error');
-    errEl.textContent = '';
-
+  function finalizeTake(editor, take, notesOverride, pauseReasonOverride){
     var pauseLog = (take.pauseLog || []).slice();
     if(take.paused && take.pausedAt){
-      var reasonInput = document.getElementById('pause-reason-input');
-      var reason = reasonInput ? reasonInput.value.trim() : (take.pauseReason || '');
+      var reason = pauseReasonOverride != null ? pauseReasonOverride : (take.pauseReason || '');
       pauseLog.push({
         pausedAt: take.pausedAt, resumedAt: new Date().toISOString(), reason: reason,
         durationMs: Date.now() - new Date(take.pausedAt).getTime()
@@ -1617,7 +1614,7 @@
       project: take.project,
       stage: take.stage,
       hours: hours,
-      notes: notes,
+      notes: notesOverride != null ? notesOverride : (take.notes || ''),
       date: todayStr(new Date(startedMs)),
       loggedAt: new Date().toISOString(),
       pauseCount: pauseLog.length,
@@ -1625,26 +1622,41 @@
       pauses: pauseLog
     };
 
+    return db.collection('entries').doc(entry.id).set(entry)
+      .then(function(){ return clearActiveTakeDoc(editor); })
+      .then(function(){
+        delete state.allActiveTakes[editor];
+        var isFinalStage = state.stages.length > 0 && entry.stage === state.stages[state.stages.length - 1];
+        if(isFinalStage){
+          return clearLock(entry.video).then(function(){ delete state.locks[entry.video]; });
+        }
+        var lockData = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
+        return setLock(entry.video, lockData).then(function(){ state.locks[entry.video] = lockData; });
+      })
+      .then(function(){
+        state.entries = state.entries.concat([entry]);
+        return { ok: true, entry: entry };
+      })
+      .catch(function(err){ return { error: String(err) }; });
+  }
+
+  function endTake(){
+    if(!state.activeTake) return;
+    var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
+    var take = state.activeTake;
+    var notes = document.getElementById('f-notes-active').value.trim();
+    var pauseReasonInput = document.getElementById('pause-reason-input');
+    var pauseReason = pauseReasonInput ? pauseReasonInput.value.trim() : null;
+    var errEl = document.getElementById('end-error');
+    errEl.textContent = '';
+
     var btn = document.getElementById('end-btn');
     btn.disabled = true;
 
-    db.collection('entries').doc(entry.id).set(entry).then(function(){ return { ok: true }; }).catch(function(err){ return { error: String(err) }; }).then(function(res){
+    finalizeTake(editor, take, notes, pauseReason).then(function(res){
       if(res && res.error){ throw new Error(res.error); }
-      state.entries = state.entries.concat([entry]);
+      state.activeTake = null;
 
-      return clearActiveTakeDoc(editor).then(function(){
-        delete state.allActiveTakes[editor];
-        state.activeTake = null;
-      });
-    }).then(function(){
-      var isFinalStage = state.stages.length > 0 && entry.stage === state.stages[state.stages.length - 1];
-      if(isFinalStage){
-        return clearLock(entry.video).then(function(){ delete state.locks[entry.video]; });
-      } else {
-        var lockData = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
-        return setLock(entry.video, lockData).then(function(){ state.locks[entry.video] = lockData; });
-      }
-    }).then(function(){
       document.getElementById('f-video').value = '';
       document.getElementById('f-notes').value = '';
       document.getElementById('f-notes-active').value = '';
@@ -1656,6 +1668,21 @@
       errEl.textContent = "Couldn't save — check your connection and try again.";
     }).finally(function(){
       btn.disabled = false;
+    });
+  }
+
+  function askForceEndTake(editorName){
+    state.confirmForceEnd = editorName;
+    renderActiveTakesPanel();
+  }
+
+  function performForceEndTake(editorName){
+    var take = state.allActiveTakes[editorName];
+    state.confirmForceEnd = null;
+    if(!take){ renderActiveTakesPanel(); return; }
+    finalizeTake(editorName, take).then(function(res){
+      if(res && res.error){ window.alert("Couldn't end that take — try again."); return; }
+      renderActiveTakesPanel();
     });
   }
 
@@ -1764,6 +1791,11 @@
 
     var resumeBtn = e.target.closest('#resume-btn');
     if(resumeBtn){ resumeTake(); return; }
+
+    var askForceEndBtn = e.target.closest('[data-ask-force-end]');
+    if(askForceEndBtn){ askForceEndTake(askForceEndBtn.getAttribute('data-ask-force-end')); return; }
+    var confirmForceEndBtn = e.target.closest('[data-confirm-force-end]');
+    if(confirmForceEndBtn){ performForceEndTake(confirmForceEndBtn.getAttribute('data-confirm-force-end')); return; }
 
     var exportAllBtn = e.target.closest('#export-all-btn');
     if(exportAllBtn){ exportMonthlyReport(); return; }
