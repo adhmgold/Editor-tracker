@@ -1716,7 +1716,9 @@
         });
       })
       .then(function(){
-        state.entries = state.entries.concat([entry]);
+        // state.entries is intentionally not updated here — the live watchEntries
+        // listener will pick up this write and refresh it; doing both was racing
+        // and occasionally double-counting the same entry.
         return { ok: true, entry: entry };
       })
       .catch(function(err){ return { error: String(err), entry: entry }; });
