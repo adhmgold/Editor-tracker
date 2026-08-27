@@ -639,6 +639,20 @@
     return Math.max(0, totalMs - pausedMs);
   }
 
+  // Display-only: this session's time PLUS whatever was already logged on this
+  // video in earlier sessions, so the on-screen timer reads as a running total
+  // instead of resetting to zero after a hold/resume. The real per-session hours
+  // used when the take is finalized still come from computeWorkedMs alone.
+  function displayWorkedMs(take, nowMs){
+    return (take.baseHours || 0) * 3600000 + computeWorkedMs(take, nowMs);
+  }
+
+  function priorLoggedHours(editor, video){
+    return state.entries
+      .filter(function(e){ return e.editor === editor && e.video === video; })
+      .reduce(function(s,e){ return s + e.hours; }, 0);
+  }
+
   function pauseBadgeHtml(entry){
     if(!entry.pauseCount){ return ''; }
     var reasons = (entry.pauses || []).map(function(p){ return p.reason || 'no reason given'; }).join('; ');
@@ -1440,7 +1454,7 @@
   function tickTimer(){
     if(!state.activeTake) return;
     var el = document.getElementById('timer-display');
-    if(el){ el.textContent = formatHMS(computeWorkedMs(state.activeTake)); }
+    if(el){ el.textContent = formatHMS(displayWorkedMs(state.activeTake)); }
     if(state.activeTake.paused && state.activeTake.pausedAt){
       var pel = document.getElementById('pause-timer-display');
       if(pel){ pel.textContent = formatHMS(Date.now() - new Date(state.activeTake.pausedAt).getTime()); }
@@ -1451,8 +1465,9 @@
     document.getElementById('take-setup').style.display = 'none';
     document.getElementById('take-active').style.display = 'block';
     var at = state.activeTake;
+    var baseNote = at.baseHours ? (' <span style="font-weight:500;color:var(--navy-faint);">(includes '+formatHM(at.baseHours)+' already logged on this video)</span>') : '';
     document.getElementById('active-take-summary').innerHTML =
-      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage);
+      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage)+baseNote;
     document.getElementById('f-notes-active').value = at.notes || '';
     document.getElementById('pause-banner').style.display = at.paused ? 'block' : 'none';
     document.getElementById('pause-btn').style.display = at.paused ? 'none' : 'inline-block';
@@ -1638,7 +1653,8 @@
       paused: false,
       pausedAt: null,
       pauseReason: '',
-      pauseLog: []
+      pauseLog: [],
+      baseHours: priorLoggedHours(editor, video)
     };
 
     var btn = document.getElementById('start-btn');
@@ -1857,7 +1873,8 @@
       paused: false,
       pausedAt: null,
       pauseReason: '',
-      pauseLog: []
+      pauseLog: [],
+      baseHours: priorLoggedHours(editor, video)
     };
 
     withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
