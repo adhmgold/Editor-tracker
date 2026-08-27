@@ -459,6 +459,7 @@
     <div class="card">
       <div class="card-head">On hold</div>
       <div id="held-items-list"><div class="empty-state">Loading…</div></div>
+      <div class="form-error" id="held-items-error"></div>
     </div>
 
     <div class="card">
@@ -1832,11 +1833,45 @@
   }
 
   function resumeHeldItem(video, project, stage){
+    var errEl = document.getElementById('held-items-error');
+    errEl.textContent = '';
+
+    if(state.activeTake){
+      errEl.textContent = 'Finish or hold your current take before resuming another one.';
+      return;
+    }
+
+    var editor = state.identity.name;
+    populateProjectSelect(project);
+    populateStageSelect(stage);
     document.getElementById('f-video').value = video;
-    if(project){ populateProjectSelect(project); }
-    if(stage){ populateStageSelect(stage); }
-    checkVideoLock();
-    document.getElementById('f-video').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    var take = {
+      video: video,
+      project: project || document.getElementById('f-project').value,
+      stage: stage || document.getElementById('f-stage').value,
+      notes: '',
+      startedAt: new Date().toISOString(),
+      paused: false,
+      pausedAt: null,
+      pauseReason: '',
+      pauseLog: []
+    };
+
+    withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
+      if(res && res.error){
+        errEl.textContent = "Couldn't resume — check your connection and try again.";
+        return;
+      }
+      state.allActiveTakes[editor] = take;
+      state.activeTake = take;
+      document.getElementById('lock-warning').style.display = 'none';
+
+      var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
+      withRetry(function(){ return setLock(video, lockData); }).then(function(){ state.locks[video] = lockData; });
+
+      enterActiveTakeUI();
+    });
   }
 
   function monthBoundsForOffset(offset){
