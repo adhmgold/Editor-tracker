@@ -138,7 +138,11 @@
   .btn-end:hover{filter:brightness(1.08);}
   .btn-pause{background:var(--orange);color:var(--navy);box-shadow:0 3px 0 var(--navy);}
   .btn-pause:hover{filter:brightness(1.05);}
+  .btn-hold{background:var(--pink);color:var(--navy);box-shadow:0 3px 0 var(--navy);}
+  .btn-hold:hover{filter:brightness(1.05);}
   #pause-banner{background:var(--orange-tint);border:2px dashed var(--orange);border-radius:12px;
+    padding:14px;margin-bottom:14px;}
+  #hold-prompt{background:var(--pink-tint);border:2px dashed var(--pink);border-radius:12px;
     padding:14px;margin-bottom:14px;}
   .pause-badge{font-family:var(--font-display);font-weight:800;font-size:14px;color:#B8460B;margin-bottom:8px;}
   .pause-flag{font-family:var(--font-body);font-size:10px;color:var(--navy-faint);background:var(--cream-deep);
@@ -244,12 +248,14 @@
   .vh-editor{font-weight:700;width:90px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .vh-dur{font-family:var(--font-display);font-weight:700;color:var(--navy);width:48px;flex:none;text-align:right;}
   .vh-notes{color:var(--navy-soft);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .vh-time{font-family:var(--font-body);font-size:11px;color:var(--navy-faint);flex:none;white-space:nowrap;}
   .period-btn{
     padding:7px 14px;border-radius:9px;border:2px solid var(--navy);background:var(--card);
     color:var(--navy-soft);font-family:var(--font-display);font-weight:700;font-size:12px;cursor:pointer;
   }
   .period-btn.active{background:var(--indigo);border-color:var(--indigo);color:#fff;}
   .period-btn:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;}
+  .period-btn:disabled{opacity:.35;cursor:not-allowed;}
 
   .video-row{padding:14px 0;border-bottom:1px dashed var(--line);}
   .video-row:last-child{border-bottom:none;}
@@ -339,7 +345,7 @@
 
       <div class="gate-role-label">I'm the manager</div>
       <div class="field">
-        <input type="text" id="gate-manager-code" placeholder="Access code">
+        <input type="password" id="gate-manager-code" placeholder="Access code">
       </div>
       <button type="button" class="btn-primary" id="gate-manager-btn">Continue as manager</button>
       <div class="form-error" id="gate-error"></div>
@@ -422,12 +428,22 @@
         <button type="button" class="btn-primary" id="resume-btn">▶ Resume</button>
       </div>
 
+      <div id="hold-prompt" style="display:none;">
+        <div class="field">
+          <label for="hold-reason-input">Why are you holding this episode?</label>
+          <input type="text" id="hold-reason-input" dir="auto" placeholder="e.g. waiting on VO files, client feedback needed">
+        </div>
+        <button type="button" class="btn-primary" id="confirm-hold-btn">Confirm Hold</button>
+        <button type="button" class="switch-link" id="cancel-hold-btn">Cancel</button>
+      </div>
+
       <div class="field">
         <label for="f-notes-active">Notes (optional)</label>
         <textarea id="f-notes-active" dir="auto" placeholder="What happened in this session?"></textarea>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;" id="active-take-buttons">
         <button type="button" class="btn-primary btn-pause" id="pause-btn">⏸ Pause</button>
+        <button type="button" class="btn-primary btn-hold" id="hold-btn">📌 Hold</button>
         <button type="button" class="btn-primary btn-end" id="end-btn">■ End Take</button>
       </div>
       <div class="form-error" id="end-error"></div>
@@ -438,6 +454,22 @@
         <div class="card-head" style="margin-bottom:0">Today's takes</div>
       </div>
       <div id="today-feed"><div class="empty-state">Loading…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">On hold</div>
+      <div id="held-items-list"><div class="empty-state">Loading…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">My history</div>
+      <div class="period-toggle" style="align-items:center;">
+        <button type="button" class="period-btn" id="my-history-prev">‹</button>
+        <div style="flex:1;text-align:center;font-family:var(--font-display);font-weight:800;font-size:14px;" id="my-history-month-label">—</div>
+        <button type="button" class="period-btn" id="my-history-next">›</button>
+      </div>
+      <div class="video-detail-total" id="my-history-summary" style="margin-bottom:10px;"></div>
+      <div id="my-history-list"><div class="empty-state">Loading…</div></div>
     </div>
   </div>
 
@@ -549,7 +581,7 @@
     }
   }; // local fallback only — Firestore seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, activeTake: null, allActiveTakes: {}, timerInterval: null };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, activeTake: null, allActiveTakes: {}, timerInterval: null, myHistoryMonthOffset: 0 };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -612,6 +644,22 @@
     return ' <span class="pause-flag" title="'+escapeHtml(reasons)+'">⏸'+entry.pauseCount+' · '+(entry.pausedMinutes||0)+'m</span>';
   }
 
+  function holdBadgeHtml(entry){
+    if(!entry.held){ return ''; }
+    return ' <span class="pause-flag" title="'+escapeHtml(entry.holdReason || 'No reason given')+'">📌 held</span>';
+  }
+
+  function formatTimeOfDay(isoString){
+    if(!isoString){ return ''; }
+    var d = new Date(isoString);
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function timeRangeHtml(entry){
+    if(!entry.startedAt){ return ''; }
+    return '<div class="vh-time">'+formatTimeOfDay(entry.startedAt)+'–'+formatTimeOfDay(entry.loggedAt)+'</div>';
+  }
+
   function renderActiveTakesPanel(){
     var wrap = document.getElementById('currently-working-list');
     if(!wrap) return;
@@ -631,6 +679,7 @@
       return '<div class="cw-row">'
         + '<div class="cw-editor" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</div>'
         + '<div class="cw-detail" title="'+escapeHtml(t.video)+' · '+escapeHtml(t.project)+' · '+escapeHtml(t.stage)+'">'+escapeHtml(t.video)+' <span style="color:var(--navy-faint);">· '+escapeHtml(t.project)+' · '+escapeHtml(t.stage)+'</span></div>'
+        + '<div class="vh-time" title="Started at">since '+formatTimeOfDay(t.startedAt)+'</div>'
         + '<div class="feed-stage tag-color-'+statusColor+'">'+statusTxt+'</div>'
         + '<div class="cw-timer" data-live-timer="'+escapeHtml(name)+'">'+formatHMS(computeWorkedMs(t))+'</div>'
         + endBtnHtml
@@ -1026,7 +1075,7 @@
         + '<div class="feed-video" title="'+escapeHtml(e.video)+' · '+escapeHtml(e.project||'')+'">'+videoLabel+'</div>'
         + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
         + '<div class="feed-dur">'+formatHM(e.hours)+'</div>'
-        + pauseBadgeHtml(e)
+        + pauseBadgeHtml(e) + holdBadgeHtml(e)
         + '<div class="feed-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes)+'</div>'
         + '</div>';
     }).join('');
@@ -1097,10 +1146,11 @@
       var dateStr = formatDateLabel(e.date);
       return '<div class="vh-row">'
         + '<div class="vh-date">'+escapeHtml(dateStr)+'</div>'
+        + timeRangeHtml(e)
         + '<div class="vh-editor" title="'+escapeHtml(e.editor)+'">'+escapeHtml(e.editor)+'</div>'
         + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
         + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
-        + pauseBadgeHtml(e)
+        + pauseBadgeHtml(e) + holdBadgeHtml(e)
         + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
         + '</div>';
     }).join('');
@@ -1157,10 +1207,11 @@
         var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
         return '<div class="vh-row">'
           + '<div class="vh-date">'+escapeHtml(dateStr)+'</div>'
+          + timeRangeHtml(e)
           + '<div class="vh-editor" title="'+escapeHtml(e.video)+'">'+videoLabel+'</div>'
           + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
           + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
-          + pauseBadgeHtml(e)
+          + pauseBadgeHtml(e) + holdBadgeHtml(e)
           + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
           + '</div>';
       }).join('');
@@ -1202,14 +1253,16 @@
 
   function exportMonthlyReport(){
     var monthStart = monthStartStr();
-    var headers = ['Editor','Date','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Notes'];
+    var headers = ['Editor','Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Notes'];
     var rows = state.entries.filter(function(e){ return e.date >= monthStart; })
       .sort(function(a,b){ return a.editor.localeCompare(b.editor) || a.date.localeCompare(b.date); })
       .map(function(e){
         return {
-          Editor: e.editor, Date: e.date, Video: e.video, Project: e.project || '', Stage: e.stage,
+          Editor: e.editor, Date: e.date, Started: formatTimeOfDay(e.startedAt), Ended: formatTimeOfDay(e.loggedAt),
+          Video: e.video, Project: e.project || '', Stage: e.stage,
           Hours: e.hours.toFixed(2), Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
-          'Pause Reasons': pauseReasonsJoined(e), Notes: e.notes || ''
+          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '',
+          Notes: e.notes || ''
         };
       });
     if(rows.length === 0){ window.alert('Nothing logged this month yet.'); return; }
@@ -1218,14 +1271,16 @@
 
   function exportEditorReport(editorName){
     var monthStart = monthStartStr();
-    var headers = ['Date','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Notes'];
+    var headers = ['Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Notes'];
     var rows = state.entries.filter(function(e){ return e.editor === editorName && e.date >= monthStart; })
       .sort(function(a,b){ return a.date.localeCompare(b.date); })
       .map(function(e){
         return {
-          Date: e.date, Video: e.video, Project: e.project || '', Stage: e.stage, Hours: e.hours.toFixed(2),
+          Date: e.date, Started: formatTimeOfDay(e.startedAt), Ended: formatTimeOfDay(e.loggedAt),
+          Video: e.video, Project: e.project || '', Stage: e.stage, Hours: e.hours.toFixed(2),
           Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
-          'Pause Reasons': pauseReasonsJoined(e), Notes: e.notes || ''
+          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '',
+          Notes: e.notes || ''
         };
       });
     if(rows.length === 0){ window.alert('Nothing logged this month yet for this editor.'); return; }
@@ -1590,7 +1645,7 @@
     });
   }
 
-  function finalizeTake(editor, take, notesOverride, pauseReasonOverride){
+  function finalizeTake(editor, take, notesOverride, pauseReasonOverride, extraFields){
     var pauseLog = (take.pauseLog || []).slice();
     if(take.paused && take.pausedAt){
       var reason = pauseReasonOverride != null ? pauseReasonOverride : (take.pauseReason || '');
@@ -1616,11 +1671,15 @@
       hours: hours,
       notes: notesOverride != null ? notesOverride : (take.notes || ''),
       date: todayStr(new Date(startedMs)),
+      startedAt: take.startedAt,
       loggedAt: new Date().toISOString(),
       pauseCount: pauseLog.length,
       pausedMinutes: Math.round(pausedMs / 60000),
-      pauses: pauseLog
+      pauses: pauseLog,
+      held: false,
+      holdReason: ''
     };
+    if(extraFields){ Object.assign(entry, extraFields); }
 
     return db.collection('entries').doc(entry.id).set(entry)
       .then(function(){ return clearActiveTakeDoc(editor); })
@@ -1669,6 +1728,138 @@
     }).finally(function(){
       btn.disabled = false;
     });
+  }
+
+  function showHoldPrompt(){
+    document.getElementById('hold-prompt').style.display = 'block';
+    document.getElementById('active-take-buttons').style.display = 'none';
+    var input = document.getElementById('hold-reason-input');
+    input.value = '';
+    input.focus();
+  }
+
+  function hideHoldPrompt(){
+    document.getElementById('hold-prompt').style.display = 'none';
+    document.getElementById('active-take-buttons').style.display = 'flex';
+  }
+
+  function holdTake(){
+    if(!state.activeTake) return;
+    var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
+    var take = state.activeTake;
+    var notes = document.getElementById('f-notes-active').value.trim();
+    var pauseReasonInput = document.getElementById('pause-reason-input');
+    var pauseReason = pauseReasonInput ? pauseReasonInput.value.trim() : null;
+    var holdReason = document.getElementById('hold-reason-input').value.trim();
+    var errEl = document.getElementById('end-error');
+    errEl.textContent = '';
+
+    var btn = document.getElementById('confirm-hold-btn');
+    btn.disabled = true;
+
+    finalizeTake(editor, take, notes, pauseReason, { held: true, holdReason: holdReason }).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.activeTake = null;
+
+      document.getElementById('f-video').value = '';
+      document.getElementById('f-notes').value = '';
+      document.getElementById('f-notes-active').value = '';
+      hideHoldPrompt();
+      refreshDatalists();
+      renderFeed();
+      if(state.activeTab === 'dashboard') renderDashboard();
+      exitActiveTakeUI();
+    }).catch(function(){
+      errEl.textContent = "Couldn't save — check your connection and try again.";
+    }).finally(function(){
+      btn.disabled = false;
+    });
+  }
+
+  function computeHeldItems(editorName){
+    var mine = state.entries.filter(function(e){ return e.editor === editorName; });
+    var byVideo = {};
+    mine.forEach(function(e){
+      if(!byVideo[e.video] || e.loggedAt > byVideo[e.video].loggedAt){
+        byVideo[e.video] = e;
+      }
+    });
+    return Object.keys(byVideo).map(function(v){ return byVideo[v]; })
+      .filter(function(e){ return e.held; })
+      .sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+  }
+
+  function renderHeldItems(){
+    var wrap = document.getElementById('held-items-list');
+    if(!wrap || !state.identity || state.identity.role !== 'editor') return;
+    var items = computeHeldItems(state.identity.name);
+    if(items.length === 0){
+      wrap.innerHTML = '<div class="empty-state">Nothing on hold right now.</div>';
+      return;
+    }
+    wrap.innerHTML = items.map(function(e){
+      var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
+      return '<div class="vh-row">'
+        + '<div class="vh-date">'+escapeHtml(formatDateLabel(e.date))+'</div>'
+        + '<div class="vh-editor" title="'+escapeHtml(e.video)+'">'+videoLabel+'</div>'
+        + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
+        + '<div class="vh-notes" title="'+escapeHtml(e.holdReason||'')+'">'+escapeHtml(e.holdReason || 'No reason given')+'</div>'
+        + '<button type="button" class="switch-link" data-resume-held="'+escapeHtml(e.video)+'" data-resume-project="'+escapeHtml(e.project||'')+'" data-resume-stage="'+escapeHtml(e.stage)+'">resume</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  function resumeHeldItem(video, project, stage){
+    document.getElementById('f-video').value = video;
+    if(project){ populateProjectSelect(project); }
+    if(stage){ populateStageSelect(stage); }
+    checkVideoLock();
+    document.getElementById('f-video').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function monthBoundsForOffset(offset){
+    var d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + offset);
+    var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-01';
+    var endD = new Date(d.getFullYear(), d.getMonth()+1, 1);
+    var end = endD.getFullYear() + '-' + pad(endD.getMonth()+1) + '-01';
+    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return { start: start, end: end, label: months[d.getMonth()] + ' ' + d.getFullYear() };
+  }
+
+  function renderMyHistory(){
+    var wrap = document.getElementById('my-history-list');
+    if(!wrap || !state.identity || state.identity.role !== 'editor') return;
+    var bounds = monthBoundsForOffset(state.myHistoryMonthOffset);
+    document.getElementById('my-history-month-label').textContent = bounds.label;
+    document.getElementById('my-history-next').disabled = state.myHistoryMonthOffset >= 0;
+
+    var rows = state.entries.filter(function(e){
+      return e.editor === state.identity.name && e.date >= bounds.start && e.date < bounds.end;
+    }).sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+
+    var totalHours = rows.reduce(function(s,e){ return s + e.hours; }, 0);
+    var videoCount = new Set(rows.map(function(e){ return e.video; })).size;
+    document.getElementById('my-history-summary').textContent = rows.length
+      ? (formatHM(totalHours) + ' · ' + videoCount + ' video' + (videoCount===1?'':'s'))
+      : '';
+
+    if(rows.length === 0){
+      wrap.innerHTML = '<div class="empty-state">Nothing logged this month.</div>';
+      return;
+    }
+    wrap.innerHTML = rows.map(function(e){
+      var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
+      return '<div class="vh-row">'
+        + '<div class="vh-date">'+escapeHtml(formatDateLabel(e.date))+'</div>'
+        + '<div class="vh-editor" title="'+escapeHtml(e.video)+'">'+videoLabel+'</div>'
+        + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
+        + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
+        + pauseBadgeHtml(e) + holdBadgeHtml(e)
+        + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
+        + '</div>';
+    }).join('');
   }
 
   function askForceEndTake(editorName){
@@ -1791,6 +1982,31 @@
 
     var resumeBtn = e.target.closest('#resume-btn');
     if(resumeBtn){ resumeTake(); return; }
+
+    var holdBtn = e.target.closest('#hold-btn');
+    if(holdBtn){ showHoldPrompt(); return; }
+    var cancelHoldBtn = e.target.closest('#cancel-hold-btn');
+    if(cancelHoldBtn){ hideHoldPrompt(); return; }
+    var confirmHoldBtn = e.target.closest('#confirm-hold-btn');
+    if(confirmHoldBtn){ holdTake(); return; }
+
+    var resumeHeldBtn = e.target.closest('[data-resume-held]');
+    if(resumeHeldBtn){
+      resumeHeldItem(
+        resumeHeldBtn.getAttribute('data-resume-held'),
+        resumeHeldBtn.getAttribute('data-resume-project'),
+        resumeHeldBtn.getAttribute('data-resume-stage')
+      );
+      return;
+    }
+
+    var historyPrevBtn = e.target.closest('#my-history-prev');
+    if(historyPrevBtn){ state.myHistoryMonthOffset -= 1; renderMyHistory(); return; }
+    var historyNextBtn = e.target.closest('#my-history-next');
+    if(historyNextBtn){
+      if(state.myHistoryMonthOffset < 0){ state.myHistoryMonthOffset += 1; renderMyHistory(); }
+      return;
+    }
 
     var askForceEndBtn = e.target.closest('[data-ask-force-end]');
     if(askForceEndBtn){ askForceEndTake(askForceEndBtn.getAttribute('data-ask-force-end')); return; }
@@ -1959,6 +2175,8 @@
       state.loading = false;
       refreshDatalists();
       renderFeed();
+      renderHeldItems();
+      renderMyHistory();
 
       if(state.activeTab === 'dashboard'){
         renderDashboard();
