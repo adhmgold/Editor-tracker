@@ -326,7 +326,11 @@
 </head>
 <body>
 <div id="app">
-  <div id="gate-screen">
+  <div id="boot-loading" style="max-width:280px;margin:100px auto;text-align:center;">
+    <div class="empty-state" style="font-style:normal;">Loading…</div>
+  </div>
+
+  <div id="gate-screen" style="display:none;">
     <div class="card gate-card">
       <div class="card-head">Who's logging in?</div>
 
@@ -2220,11 +2224,13 @@
   }
 
   function showGate(){
+    document.getElementById('boot-loading').style.display = 'none';
     document.getElementById('gate-screen').style.display = 'block';
     document.getElementById('main-screen').style.display = 'none';
   }
 
   function showMain(){
+    document.getElementById('boot-loading').style.display = 'none';
     document.getElementById('gate-screen').style.display = 'none';
     document.getElementById('main-screen').style.display = 'block';
     setupForm();
@@ -2319,6 +2325,8 @@
   }
 
   if(!firebaseReady){
+    document.getElementById('boot-loading').style.display = 'none';
+    document.getElementById('gate-screen').style.display = 'block';
     document.getElementById('gate-screen').innerHTML =
       '<div class="card gate-card">'
       + '<div class="card-head">Setup needed</div>'
