@@ -643,18 +643,24 @@
     return Math.max(0, totalMs - pausedMs);
   }
 
-  // Display-only: this session's time PLUS whatever was already logged on this
-  // video in earlier sessions, so the on-screen timer reads as a running total
-  // instead of resetting to zero after a hold/resume. The real per-session hours
-  // used when the take is finalized still come from computeWorkedMs alone.
-  function displayWorkedMs(take, nowMs){
-    return (take.baseHours || 0) * 3600000 + computeWorkedMs(take, nowMs);
-  }
-
   function priorLoggedHours(editor, video){
     return state.entries
       .filter(function(e){ return e.editor === editor && e.video === video; })
       .reduce(function(s,e){ return s + e.hours; }, 0);
+  }
+
+  // Display-only: this session's time PLUS whatever was already logged on this
+  // video in earlier sessions, so the on-screen timer reads as a running total
+  // instead of resetting to zero after a hold/resume. Computed fresh from
+  // state.entries each call — not a value carried on the take object — so it
+  // can't go stale or get lost across the start/Firestore/live-listener chain.
+  // The real per-session hours used when the take is finalized still come from
+  // computeWorkedMs alone. Only applies to takes explicitly resumed from a
+  // held item — a plain Start Take on the same video always begins at zero.
+  function displayWorkedMs(take, nowMs){
+    if(!take.resumedFromHold || !state.identity){ return computeWorkedMs(take, nowMs); }
+    var prior = priorLoggedHours(state.identity.name, take.video);
+    return prior * 3600000 + computeWorkedMs(take, nowMs);
   }
 
   function pauseBadgeHtml(entry){
@@ -1469,7 +1475,8 @@
     document.getElementById('take-setup').style.display = 'none';
     document.getElementById('take-active').style.display = 'block';
     var at = state.activeTake;
-    var baseNote = at.baseHours ? (' <span style="font-weight:500;color:var(--navy-faint);">(includes '+formatHM(at.baseHours)+' already logged on this video)</span>') : '';
+    var priorHrs = at.resumedFromHold ? priorLoggedHours(state.identity.name, at.video) : 0;
+    var baseNote = priorHrs ? (' <span style="font-weight:500;color:var(--navy-faint);">(includes '+formatHM(priorHrs)+' already logged on this video)</span>') : '';
     document.getElementById('active-take-summary').innerHTML =
       '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage)+baseNote;
     document.getElementById('f-notes-active').value = at.notes || '';
@@ -1657,8 +1664,7 @@
       paused: false,
       pausedAt: null,
       pauseReason: '',
-      pauseLog: [],
-      baseHours: priorLoggedHours(editor, video)
+      pauseLog: []
     };
 
     var btn = document.getElementById('start-btn');
@@ -1878,7 +1884,7 @@
       pausedAt: null,
       pauseReason: '',
       pauseLog: [],
-      baseHours: priorLoggedHours(editor, video)
+      resumedFromHold: true
     };
 
     withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
