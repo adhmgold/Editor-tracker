@@ -657,7 +657,7 @@
     <div class="form-error" id="pw-error"></div>
   </div>
 
-  <footer>Editors see only their own log here. The manager view aggregates the whole team.</footer>
+  <footer>Editors see only their own log here. The manager view aggregates the whole team.<br><span style="opacity:.7;">Version 2026-10-05b · plans &amp; tasks</span></footer>
   </div><!-- /main-screen -->
 </div>
 
@@ -1767,6 +1767,15 @@
 
   function planDue(plan){ return plan.dueDate || plan.date; }
 
+  function planErrorText(err, verb){
+    var raw = String(err && err.message ? err.message : err).replace(/^(Error:\s*)+/, '');
+    console.error('Plan operation failed:', err);
+    if(/permission/i.test(raw)){
+      return "Can't " + verb + " — the Firestore rules still need the plans collection added.";
+    }
+    return "Couldn't " + verb + " — " + raw.slice(0, 180);
+  }
+
   function planDeadlineMs(plan){
     if(!plan.deadline){ return null; }
     var t = new Date(planDue(plan) + 'T' + plan.deadline).getTime();
@@ -2021,9 +2030,7 @@
       renderPlanList();
       if(startNow){ startTakeFromPlan(plan.id); }
     }).catch(function(err){
-      errEl.textContent = /permission/i.test(String(err))
-        ? "Plans can't be saved yet — the Firestore rules still need the plans collection added."
-        : "Couldn't save — check your connection and try again.";
+      errEl.textContent = planErrorText(err, 'save this plan item');
     }).finally(function(){
       setPlanButtonsDisabled(false);
     });
@@ -2098,9 +2105,7 @@
       setTimeout(function(){ errEl.textContent = ''; errEl.style.color = ''; }, 2500);
     }).catch(function(err){
       errEl.style.color = '';
-      errEl.textContent = /permission/i.test(String(err))
-        ? "Tasks can't be saved yet — the Firestore rules still need the plans collection added."
-        : "Couldn't assign — check your connection and try again.";
+      errEl.textContent = planErrorText(err, 'assign this task');
     }).finally(function(){
       btn.disabled = false;
     });
@@ -2142,8 +2147,8 @@
 
       document.getElementById('lock-warning').style.display = 'none';
       enterActiveTakeUI();
-    }).catch(function(){
-      errEl.textContent = "Couldn't start — check your connection and try again.";
+    }).catch(function(err){
+      errEl.textContent = planErrorText(err, 'start this take');
     });
   }
 
@@ -2158,7 +2163,7 @@
     var patch = { status: 'dropped', droppedAt: new Date().toISOString() };
     withRetry(function(){ return patchPlanDoc(planId, patch); }).then(function(res){
       var errEl = document.getElementById('plan-error');
-      if(res && res.error){ errEl.textContent = "Couldn't remove — try again."; return; }
+      if(res && res.error){ errEl.textContent = planErrorText(res.error, 'remove this item'); return; }
       if(state.plans[planId]){ Object.assign(state.plans[planId], patch); }
       renderPlanList();
       renderPlansPanel();
