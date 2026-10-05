@@ -152,6 +152,8 @@
   #panel-log #take-active{order:-2;}
   #panel-log #plan-card{order:-1;}
 
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+  .plan-flag.assigned{background:var(--indigo-tint);color:var(--indigo);}
   .tag-color-red{background:var(--red-tint);color:#9A0029;}
   .tag-color-gray{background:var(--cream-deep);color:var(--navy-soft);}
   .plan-row{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px dashed var(--line);
@@ -342,7 +344,7 @@
   .locked-field{background:var(--cream-deep) !important;color:var(--navy-soft);cursor:not-allowed;}
 
   @media (max-width:520px){
-    .row2{grid-template-columns:1fr;}
+    .row2,.row3{grid-template-columns:1fr;}
     .feed-video,.feed-editor{width:auto;max-width:90px;}
     .slate{flex-direction:column;align-items:flex-start;gap:8px;}
   }
@@ -438,7 +440,7 @@
           </div>
         </div>
 
-        <div class="row2">
+        <div class="row3">
           <div class="field">
             <label for="f-priority">Priority</label>
             <select id="f-priority">
@@ -448,7 +450,11 @@
             </select>
           </div>
           <div class="field">
-            <label for="f-deadline">Deadline (today, optional)</label>
+            <label for="f-deadline-date">Due date *</label>
+            <input type="date" id="f-deadline-date" required>
+          </div>
+          <div class="field">
+            <label for="f-deadline">Time (optional)</label>
             <input type="time" id="f-deadline">
           </div>
         </div>
@@ -528,8 +534,56 @@
 
   <div class="panel" id="panel-dashboard">
     <div class="card">
-      <div class="card-head">Today's plans <span class="live-dot" aria-hidden="true"></span></div>
+      <div class="card-head">Plans &amp; tasks <span class="live-dot" aria-hidden="true"></span></div>
       <div id="plans-overview"><div class="empty-state">Loading…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">Assign a task</div>
+      <div class="row2">
+        <div class="field">
+          <label for="m-editor">Editor</label>
+          <select id="m-editor"></select>
+        </div>
+        <div class="field">
+          <label for="m-video">Video / Episode</label>
+          <input type="text" id="m-video" list="video-list" dir="auto" placeholder="e.g. ADOG04EP12">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="m-project">Project</label>
+          <select id="m-project"></select>
+        </div>
+        <div class="field">
+          <label for="m-stage">Stage</label>
+          <select id="m-stage"></select>
+        </div>
+      </div>
+      <div class="row3">
+        <div class="field">
+          <label for="m-priority">Priority</label>
+          <select id="m-priority">
+            <option value="high">High</option>
+            <option value="normal" selected>Normal</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="m-date">Due date *</label>
+          <input type="date" id="m-date">
+        </div>
+        <div class="field">
+          <label for="m-time">Time (optional)</label>
+          <input type="time" id="m-time">
+        </div>
+      </div>
+      <div class="field">
+        <label for="m-notes">Notes for the editor (optional)</label>
+        <textarea id="m-notes" dir="auto" placeholder="Anything they should know about this task?"></textarea>
+      </div>
+      <button type="button" class="btn-primary" id="assign-task-btn">Assign task</button>
+      <div class="form-error" id="assign-error"></div>
     </div>
 
     <div class="card">
@@ -963,6 +1017,7 @@
       return '<option value="'+escapeHtml(p)+'">'+escapeHtml(p)+'</option>';
     }).join('') + '<option value="__add_new__">+ Add new project…</option>';
     if(current && state.projects.indexOf(current) !== -1){ sel.value = current; }
+    fillSimpleSelect('m-project', state.projects);
   }
 
   function populateStageSelect(selectedValue){
@@ -972,6 +1027,7 @@
       return '<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>';
     }).join('') + '<option value="__add_new__">+ Add new stage…</option>';
     if(current && state.stages.indexOf(current) !== -1){ sel.value = current; }
+    fillSimpleSelect('m-stage', state.stages);
   }
 
   function confirmAddProject(){
@@ -1533,7 +1589,7 @@
     var priorHrs = at.resumedFromHold ? priorLoggedHours(state.identity.name, at.video) : 0;
     var baseNote = priorHrs ? (' <span style="font-weight:500;color:var(--navy-faint);">(includes '+formatHM(priorHrs)+' already logged on this video)</span>') : '';
     var plan = at.planId ? state.plans[at.planId] : null;
-    var dueNote = (plan && plan.deadline) ? (' <span style="font-weight:500;color:var(--navy-faint);">· due '+escapeHtml(plan.deadline)+'</span>') : '';
+    var dueNote = plan ? (' <span style="font-weight:500;color:var(--navy-faint);">· due '+escapeHtml(planDueText(plan))+'</span>') : '';
     document.getElementById('active-take-summary').innerHTML =
       '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage)+dueNote+baseNote;
     document.getElementById('f-notes-active').value = at.notes || '';
@@ -1596,6 +1652,7 @@
     var wrap = document.getElementById('editor-manage-list');
     if(!wrap || !state.credentials) return;
     var names = Object.keys(state.credentials.editors).sort();
+    populateAssignEditorSelect();
     wrap.innerHTML = names.map(function(name){
       var isConfirm = state.confirmDeleteEditor === name;
       var isResetting = state.resettingEditor === name;
@@ -1708,20 +1765,37 @@
       .catch(function(err){ return { error: String(err) }; });
   }
 
+  function planDue(plan){ return plan.dueDate || plan.date; }
+
   function planDeadlineMs(plan){
     if(!plan.deadline){ return null; }
-    var t = new Date(plan.date + 'T' + plan.deadline).getTime();
+    var t = new Date(planDue(plan) + 'T' + plan.deadline).getTime();
     return isNaN(t) ? null : t;
+  }
+
+  function planIsOverdue(plan, nowMs){
+    if(plan.status !== 'todo'){ return false; }
+    var ms = planDeadlineMs(plan);
+    if(ms != null){ return nowMs > ms; }
+    return planDue(plan) < todayStr();
+  }
+
+  function planDueText(plan){
+    var due = planDue(plan);
+    var today = todayStr();
+    var t = new Date();
+    t.setDate(t.getDate() + 1);
+    var dayTxt = due === today ? 'today' : (due === todayStr(t) ? 'tomorrow' : formatDateLabel(due));
+    return dayTxt + (plan.deadline ? ' ' + plan.deadline : '');
   }
 
   function sortPlans(a, b){
     var pa = PRIORITY_RANK[a.priority] != null ? PRIORITY_RANK[a.priority] : 1;
     var pb = PRIORITY_RANK[b.priority] != null ? PRIORITY_RANK[b.priority] : 1;
     if(pa !== pb){ return pa - pb; }
-    var dlA = planDeadlineMs(a), dlB = planDeadlineMs(b);
-    if(dlA != null && dlB == null){ return -1; }
-    if(dlA == null && dlB != null){ return 1; }
-    if(dlA != null && dlB != null && dlA !== dlB){ return dlA - dlB; }
+    var ka = planDue(a) + ' ' + (a.deadline || '99:99');
+    var kb = planDue(b) + ' ' + (b.deadline || '99:99');
+    if(ka !== kb){ return ka < kb ? -1 : 1; }
     return (a.createdAt || '').localeCompare(b.createdAt || '');
   }
 
@@ -1736,43 +1810,42 @@
   }
 
   function planFlagsHtml(plan, nowMs){
-    var today = todayStr();
-    var dl = planDeadlineMs(plan);
-    var isOpen = plan.status === 'todo';
     var flags = '';
+    if(plan.assignedBy){ flags += ' <span class="plan-flag assigned">assigned by ' + escapeHtml(plan.assignedBy) + '</span>'; }
     if(plan.addedMidDay){ flags += ' <span class="plan-flag mid">added mid-day</span>'; }
-    if(isOpen && plan.date < today){
-      flags += ' <span class="plan-flag info">carried over from ' + escapeHtml(formatDateLabel(plan.date)) + '</span>';
-    }
     if(plan.status === 'done'){
       var doneTxt = plan.doneAt ? ('done ' + formatTimeOfDay(plan.doneAt)) : 'done';
-      if(dl != null && plan.doneAt){
-        var onTime = new Date(plan.doneAt).getTime() <= dl;
-        flags += ' <span class="plan-flag ' + (onTime ? 'ok' : 'late') + '">' + doneTxt + (onTime ? ' · on time' : ' · late') + '</span>';
-      } else {
-        flags += ' <span class="plan-flag ok">' + doneTxt + '</span>';
+      var dl = planDeadlineMs(plan);
+      var onTime = true;
+      if(plan.doneAt){
+        onTime = dl != null ? (new Date(plan.doneAt).getTime() <= dl) : (todayStr(new Date(plan.doneAt)) <= planDue(plan));
       }
+      flags += ' <span class="plan-flag ' + (onTime ? 'ok' : 'late') + '">' + doneTxt + (onTime ? ' · on time' : ' · late') + '</span>';
     } else if(plan.status === 'dropped'){
       flags += ' <span class="plan-flag info">removed</span>';
-    } else if((dl != null && nowMs > dl) || (dl == null && plan.date < today)){
-      flags += ' <span class="plan-flag late">overdue</span>';
+    } else if(planIsOverdue(plan, nowMs)){
+      flags += ' <span class="plan-flag late">overdue' + (planDue(plan) < todayStr() ? ' · was due ' + escapeHtml(planDueText(plan)) : '') + '</span>';
     }
-    if(isOpen && plan.heldReason){
+    if(plan.status === 'todo' && plan.heldReason){
       flags += ' <span class="plan-flag info">📌 on hold — ' + escapeHtml(plan.heldReason) + '</span>';
     }
     return flags;
   }
 
   function planSubHtml(plan, nowMs){
-    var parts = [escapeHtml(plan.project || ''), escapeHtml(plan.stage || '')];
-    if(plan.deadline){ parts.push('by ' + escapeHtml(plan.deadline)); }
-    var base = parts.filter(Boolean).join(' · ');
-    return base + planFlagsHtml(plan, nowMs);
+    var parts = [escapeHtml(plan.project || ''), escapeHtml(plan.stage || ''), 'due ' + escapeHtml(planDueText(plan))];
+    return parts.filter(Boolean).join(' · ') + planFlagsHtml(plan, nowMs);
   }
 
   function planPriorityTag(plan){
     var pr = PRIORITY_LABEL[plan.priority] ? plan.priority : 'normal';
     return '<div class="feed-stage tag-color-' + PRIORITY_COLOR[pr] + '">' + PRIORITY_LABEL[pr] + '</div>';
+  }
+
+  function dropButtonsHtml(plan){
+    return state.confirmDropPlan === plan.id
+      ? '<button type="button" class="stage-delete confirm" data-confirm-drop-plan="' + escapeHtml(plan.id) + '">Remove?</button>'
+      : '<button type="button" class="stage-delete" data-ask-drop-plan="' + escapeHtml(plan.id) + '" aria-label="Remove task">×</button>';
   }
 
   function renderPlanList(){
@@ -1782,35 +1855,44 @@
     var today = todayStr();
     var nowMs = Date.now();
     var mine = allPlans().filter(function(p){ return p.editor === me; });
-    var open = mine.filter(function(p){ return p.status === 'todo' && p.date <= today; }).sort(sortPlans);
+    var open = mine.filter(function(p){ return p.status === 'todo'; }).sort(sortPlans);
+    var dueNow = open.filter(function(p){ return planDue(p) <= today; });
+    var upcoming = open.filter(function(p){ return planDue(p) > today; });
     var done = mine.filter(function(p){
       return p.status === 'done' && p.doneAt && todayStr(new Date(p.doneAt)) === today;
     }).sort(function(a, b){ return (a.doneAt || '').localeCompare(b.doneAt || ''); });
 
     if(open.length === 0 && done.length === 0){
-      wrap.innerHTML = '<div class="empty-state">Nothing planned yet — add your episodes for today below.</div>';
+      wrap.innerHTML = '<div class="empty-state">Nothing planned yet — add your episodes below.</div>';
       return;
     }
 
-    var html = open.map(function(p){
+    function rowHtml(p){
       var isActive = state.activeTake && state.activeTake.planId === p.id;
       var actions;
       if(isActive){
         actions = '<span class="plan-flag ok">● working now</span>';
       } else {
         actions = '<button type="button" class="btn-primary btn-small" data-start-plan="' + escapeHtml(p.id) + '">Start ▸</button>'
-          + (state.confirmDropPlan === p.id
-              ? '<button type="button" class="stage-delete confirm" data-confirm-drop-plan="' + escapeHtml(p.id) + '">Remove?</button>'
-              : '<button type="button" class="stage-delete" data-ask-drop-plan="' + escapeHtml(p.id) + '" aria-label="Remove from plan">×</button>');
+          + (p.assignedBy ? '' : dropButtonsHtml(p));
       }
       return '<div class="plan-row">'
         + planPriorityTag(p)
         + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
-        + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div></div>'
+        + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div>'
+        + (p.notes ? '<div class="plan-sub" style="color:var(--navy-soft);">' + escapeHtml(p.notes) + '</div>' : '')
+        + '</div>'
         + actions
         + '</div>';
-    }).join('');
+    }
 
+    var html = '';
+    if(dueNow.length){
+      html += '<div class="plan-group">Due today or overdue <small>' + dueNow.length + '</small></div>' + dueNow.map(rowHtml).join('');
+    }
+    if(upcoming.length){
+      html += '<div class="plan-group">Upcoming <small>' + upcoming.length + '</small></div>' + upcoming.map(rowHtml).join('');
+    }
     if(done.length){
       html += '<div class="plan-group">Finished today <small>' + done.length + '</small></div>';
       html += done.map(function(p){
@@ -1830,12 +1912,12 @@
     var today = todayStr();
     var nowMs = Date.now();
     var relevant = allPlans().filter(function(p){
-      if(p.date === today){ return true; }
-      if(p.status === 'todo'){ return p.date < today; }
-      return p.status === 'done' && p.doneAt && todayStr(new Date(p.doneAt)) === today;
+      if(p.status === 'todo'){ return true; }
+      if(p.status === 'done'){ return p.doneAt && todayStr(new Date(p.doneAt)) === today; }
+      return p.droppedAt && todayStr(new Date(p.droppedAt)) === today;
     });
     if(relevant.length === 0){
-      wrap.innerHTML = '<div class="empty-state">No plans submitted for today yet.</div>';
+      wrap.innerHTML = '<div class="empty-state">No open plans or tasks right now.</div>';
       return;
     }
     var byEditor = {};
@@ -1851,21 +1933,18 @@
       });
       var counted = items.filter(function(p){ return p.status !== 'dropped'; });
       var doneCount = counted.filter(function(p){ return p.status === 'done'; }).length;
-      var overdue = counted.filter(function(p){
-        if(p.status !== 'todo'){ return false; }
-        var dl = planDeadlineMs(p);
-        return (dl != null && nowMs > dl) || (dl == null && p.date < today);
-      }).length;
+      var overdue = counted.filter(function(p){ return planIsOverdue(p, nowMs); }).length;
       var head = '<div class="plan-group">' + escapeHtml(name)
         + '<small>' + doneCount + ' of ' + counted.length + ' done' + (overdue ? ' · ' + overdue + ' overdue' : '') + '</small></div>';
       var rows = items.map(function(p){
         var live = state.allActiveTakes[name] && state.allActiveTakes[name].planId === p.id
           ? '<span class="plan-flag ok">● working now</span>' : '';
+        var removable = p.status === 'todo' && p.assignedBy && !live ? dropButtonsHtml(p) : '';
         return '<div class="plan-row ' + (p.status === 'done' ? 'done' : (p.status === 'dropped' ? 'dropped' : '')) + '">'
           + planPriorityTag(p)
           + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
           + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div></div>'
-          + live
+          + live + removable
           + '</div>';
       }).join('');
       return head + rows;
@@ -1879,6 +1958,14 @@
     if(b){ b.disabled = disabled; }
   }
 
+  function resetDueDates(){
+    var today = todayStr();
+    ['f-deadline-date', 'm-date'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){ el.min = today; el.value = today; }
+    });
+  }
+
   function addPlanItem(startNow){
     var errEl = document.getElementById('form-error');
     errEl.textContent = '';
@@ -1889,11 +1976,14 @@
     var stage = document.getElementById('f-stage').value;
     var notes = document.getElementById('f-notes').value.trim();
     var priority = document.getElementById('f-priority').value;
+    var dueDate = document.getElementById('f-deadline-date').value;
     var deadline = document.getElementById('f-deadline').value;
 
     if(!editor || !video){ errEl.textContent = 'Editor and video are required.'; return; }
     if(!project || project === '__add_new__'){ errEl.textContent = 'Pick a project first.'; return; }
     if(!stage || stage === '__add_new__'){ errEl.textContent = 'Pick a stage first.'; return; }
+    if(!dueDate){ errEl.textContent = 'Pick a due date.'; return; }
+    if(dueDate < todayStr()){ errEl.textContent = 'The due date can\'t be in the past.'; return; }
     if(startNow && state.activeTake){
       errEl.textContent = 'Finish or hold your current take first — or use "Add to plan" to queue this one.';
       return;
@@ -1903,13 +1993,15 @@
       id: uid(),
       editor: editor,
       date: todayStr(),
+      dueDate: dueDate,
       video: video,
       project: project,
       stage: stage,
       notes: notes,
       priority: priority,
       deadline: deadline || '',
-      addedMidDay: editorHasActivityToday(editor),
+      addedMidDay: dueDate === todayStr() && editorHasActivityToday(editor),
+      assignedBy: '',
       createdAt: new Date().toISOString(),
       status: 'todo',
       heldReason: '',
@@ -1924,6 +2016,7 @@
       document.getElementById('f-notes').value = '';
       document.getElementById('f-deadline').value = '';
       document.getElementById('f-priority').value = 'normal';
+      resetDueDates();
       document.getElementById('lock-warning').style.display = 'none';
       renderPlanList();
       if(startNow){ startTakeFromPlan(plan.id); }
@@ -1933,6 +2026,83 @@
         : "Couldn't save — check your connection and try again.";
     }).finally(function(){
       setPlanButtonsDisabled(false);
+    });
+  }
+
+  function fillSimpleSelect(id, list, placeholder){
+    var sel = document.getElementById(id);
+    if(!sel){ return; }
+    var cur = sel.value;
+    sel.innerHTML = (placeholder ? '<option value="">' + escapeHtml(placeholder) + '</option>' : '')
+      + list.map(function(v){ return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+    if(cur && list.indexOf(cur) !== -1){ sel.value = cur; }
+  }
+
+  function populateAssignEditorSelect(){
+    if(!state.credentials){ return; }
+    fillSimpleSelect('m-editor', Object.keys(state.credentials.editors).sort(), 'Select editor…');
+  }
+
+  function assignTask(){
+    var errEl = document.getElementById('assign-error');
+    errEl.textContent = '';
+
+    var editor = document.getElementById('m-editor').value;
+    var video = document.getElementById('m-video').value.trim();
+    var project = document.getElementById('m-project').value;
+    var stage = document.getElementById('m-stage').value;
+    var priority = document.getElementById('m-priority').value;
+    var dueDate = document.getElementById('m-date').value;
+    var deadline = document.getElementById('m-time').value;
+    var notes = document.getElementById('m-notes').value.trim();
+
+    if(!editor){ errEl.textContent = 'Pick an editor.'; return; }
+    if(!video){ errEl.textContent = 'Enter the video / episode.'; return; }
+    if(!project){ errEl.textContent = 'Pick a project.'; return; }
+    if(!stage){ errEl.textContent = 'Pick a stage.'; return; }
+    if(!dueDate){ errEl.textContent = 'Pick a due date.'; return; }
+    if(dueDate < todayStr()){ errEl.textContent = 'The due date can\'t be in the past.'; return; }
+
+    var plan = {
+      id: uid(),
+      editor: editor,
+      date: todayStr(),
+      dueDate: dueDate,
+      video: video,
+      project: project,
+      stage: stage,
+      notes: notes,
+      priority: priority,
+      deadline: deadline || '',
+      addedMidDay: false,
+      assignedBy: MANAGER_NAME,
+      createdAt: new Date().toISOString(),
+      status: 'todo',
+      heldReason: '',
+      doneAt: ''
+    };
+
+    var btn = document.getElementById('assign-task-btn');
+    btn.disabled = true;
+    withRetry(function(){ return savePlanDoc(plan); }).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.plans[plan.id] = plan;
+      document.getElementById('m-video').value = '';
+      document.getElementById('m-notes').value = '';
+      document.getElementById('m-time').value = '';
+      document.getElementById('m-priority').value = 'normal';
+      resetDueDates();
+      renderPlansPanel();
+      errEl.style.color = 'var(--teal)';
+      errEl.textContent = 'Assigned to ' + editor + '.';
+      setTimeout(function(){ errEl.textContent = ''; errEl.style.color = ''; }, 2500);
+    }).catch(function(err){
+      errEl.style.color = '';
+      errEl.textContent = /permission/i.test(String(err))
+        ? "Tasks can't be saved yet — the Firestore rules still need the plans collection added."
+        : "Couldn't assign — check your connection and try again.";
+    }).finally(function(){
+      btn.disabled = false;
     });
   }
 
@@ -1980,6 +2150,7 @@
   function askDropPlan(planId){
     state.confirmDropPlan = planId;
     renderPlanList();
+    renderPlansPanel();
   }
 
   function performDropPlan(planId){
@@ -1990,6 +2161,7 @@
       if(res && res.error){ errEl.textContent = "Couldn't remove — try again."; return; }
       if(state.plans[planId]){ Object.assign(state.plans[planId], patch); }
       renderPlanList();
+      renderPlansPanel();
     });
   }
 
@@ -2385,6 +2557,7 @@
     if(endBtn){ endTake(); return; }
 
     if(e.target.closest('#add-start-btn')){ addPlanItem(true); return; }
+    if(e.target.closest('#assign-task-btn')){ assignTask(); return; }
     var startPlanBtn = e.target.closest('[data-start-plan]');
     if(startPlanBtn){ startTakeFromPlan(startPlanBtn.getAttribute('data-start-plan')); return; }
     var askDropBtn = e.target.closest('[data-ask-drop-plan]');
@@ -2574,6 +2747,7 @@
     setInterval(tickClock, 30000);
     setInterval(tickActiveTakesPanel, 1000);
 
+    resetDueDates();
     renderEditorManageList();
     renderPlanList();
     renderPlansPanel();
