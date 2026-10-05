@@ -322,6 +322,51 @@
     .feed-video,.feed-editor{width:auto;max-width:90px;}
     .slate{flex-direction:column;align-items:flex-start;gap:8px;}
   }
+
+  /* ---------- today's plan ---------- */
+  .plan-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  .plan-head .card-head{margin-bottom:0;}
+  .plan-count{font-size:12px;color:var(--navy-soft);font-family:var(--font-body);font-weight:500;}
+  .plan-list{display:flex;flex-direction:column;gap:8px;}
+  .plan-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid var(--line);border-radius:12px;background:var(--cream);flex-wrap:wrap;}
+  .plan-item.doing{border-color:var(--indigo);background:var(--indigo-tint);}
+  .plan-item.late{border-color:var(--red);}
+  .plan-item.done{opacity:.55;}
+  .plan-item.done .plan-video{text-decoration:line-through;}
+  .plan-prio{font-family:var(--font-display);font-weight:800;font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:7px;border:1.5px solid var(--navy);flex:none;}
+  .plan-prio.high{background:var(--red);color:#fff;}
+  .plan-prio.normal{background:var(--yellow);color:var(--navy);}
+  .plan-prio.low{background:#fff;color:var(--navy-soft);}
+  .plan-main{flex:1 1 200px;min-width:0;}
+  .plan-video{font-family:var(--font-display);font-weight:800;font-size:14px;overflow-wrap:anywhere;}
+  .plan-meta{font-size:12px;color:var(--navy-soft);display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px;}
+  .plan-due{font-weight:600;}
+  .plan-due.late{color:var(--red);}
+  .plan-due.today{color:#B8460B;}
+  .plan-tag{font-size:10px;font-family:var(--font-display);font-weight:700;padding:2px 7px;border-radius:7px;background:var(--cream-deep);color:var(--navy-soft);}
+  .plan-tag.mid{background:var(--orange-tint);color:#B8460B;}
+  .plan-tag.carry{background:var(--indigo-tint);color:var(--indigo);}
+  .plan-tag.held{background:var(--pink-tint);color:#C22E96;}
+  .plan-actions{display:flex;gap:6px;flex:none;align-items:center;}
+  .plan-btn{font-family:var(--font-display);font-weight:800;font-size:12px;border:2px solid var(--navy);border-radius:9px;padding:6px 10px;cursor:pointer;background:#fff;color:var(--navy);box-shadow:0 2px 0 var(--navy);}
+  .plan-btn.start{background:var(--indigo);color:#fff;}
+  .plan-btn.done{background:var(--teal);color:#fff;}
+  .plan-btn:disabled{opacity:.4;cursor:not-allowed;}
+  .plan-x{background:none;border:none;color:var(--navy-faint);font-size:16px;cursor:pointer;padding:2px 6px;}
+  .plan-x:hover{color:var(--red);}
+  #plan-form input[type=time]{width:100%;background:var(--cream);border:2px solid var(--line);color:var(--navy);padding:9px 12px;border-radius:9px;font-family:var(--font-body);font-size:14px;}
+  #plan-form{border:2px dashed var(--line);border-radius:12px;padding:14px;margin-top:12px;background:#fff;}
+  .prio-seg{display:flex;gap:6px;}
+  .prio-seg label{flex:1;}
+  .prio-seg input{position:absolute;opacity:0;pointer-events:none;}
+  .prio-seg span{display:block;text-align:center;padding:8px 6px;border:2px solid var(--line);border-radius:9px;font-family:var(--font-display);font-weight:800;font-size:12px;cursor:pointer;background:var(--cream);}
+  .prio-seg input:checked + span{border-color:var(--navy);}
+  .prio-seg input[value=high]:checked + span{background:var(--red);color:#fff;}
+  .prio-seg input[value=normal]:checked + span{background:var(--yellow);}
+  .prio-seg input[value=low]:checked + span{background:#fff;}
+  .prio-seg input:focus-visible + span{outline:2px solid var(--indigo);outline-offset:2px;}
+  .plan-done-toggle{background:none;border:none;color:var(--navy-soft);font-size:12px;cursor:pointer;margin-top:8px;font-family:var(--font-body);text-decoration:underline;}
+  .finish-prompt{margin-top:12px;padding:12px;border:2px solid var(--teal);background:var(--teal-tint);border-radius:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;}
 </style>
 </head>
 <body>
@@ -370,6 +415,56 @@
   </div>
 
   <div class="panel active" id="panel-log">
+    <div class="card" id="plan-card" style="display:none;">
+      <div class="plan-head">
+        <div class="card-head">Today's plan <span class="plan-count" id="plan-count"></span></div>
+        <button type="button" class="btn-primary btn-small" id="plan-add-toggle">+ Add episode</button>
+      </div>
+      <div class="plan-list" id="plan-list"><div class="empty-state">Loading…</div></div>
+      <div id="finish-prompt-wrap"></div>
+      <form id="plan-form" style="display:none;" autocomplete="off">
+        <div class="row2">
+          <div class="field">
+            <label for="p-video">Video / Episode</label>
+            <input type="text" id="p-video" list="video-list" dir="auto" placeholder="e.g. G2-U1-L03-V02" required>
+          </div>
+          <div class="field">
+            <label for="p-project">Project</label>
+            <select id="p-project"></select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="p-stage">Stage</label>
+            <select id="p-stage"></select>
+          </div>
+          <div class="field">
+            <label>Priority</label>
+            <div class="prio-seg">
+              <label><input type="radio" name="p-prio" value="high"><span>High</span></label>
+              <label><input type="radio" name="p-prio" value="normal" checked><span>Normal</span></label>
+              <label><input type="radio" name="p-prio" value="low"><span>Low</span></label>
+            </div>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="p-deadline">Deadline</label>
+            <input type="date" id="p-deadline" required>
+          </div>
+          <div class="field">
+            <label for="p-time">Time (optional)</label>
+            <input type="time" id="p-time">
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <button type="submit" class="btn-primary btn-small" id="plan-save-btn">Add to plan</button>
+          <button type="button" class="switch-link" id="plan-cancel-btn" style="color:var(--navy-soft)">Close</button>
+          <span class="plan-count" id="plan-form-msg"></span>
+        </div>
+      </form>
+    </div>
+
     <div class="card" id="take-setup">
       <div class="card-head">Start a take</div>
       <form id="log-form" autocomplete="off">
@@ -586,7 +681,7 @@
     }
   }; // local fallback only — Firestore seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, activeTake: null, allActiveTakes: {}, timerInterval: null, myHistoryMonthOffset: 0 };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, activeTake: null, allActiveTakes: {}, timerInterval: null, myHistoryMonthOffset: 0, plans: [], pendingPlanId: null, finishPromptPlanId: null, showDonePlans: false };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -1664,8 +1759,10 @@
       paused: false,
       pausedAt: null,
       pauseReason: '',
-      pauseLog: []
+      pauseLog: [],
+      planId: state.pendingPlanId || matchPlanId(video, stage)
     };
+    state.pendingPlanId = null;
 
     var btn = document.getElementById('start-btn');
     btn.disabled = true;
@@ -1679,6 +1776,7 @@
       setLock(video, lockData).then(function(){ state.locks[video] = lockData; });
 
       document.getElementById('lock-warning').style.display = 'none';
+      if(take.planId){ setPlanStatus(take.planId, 'doing'); }
       enterActiveTakeUI();
     }).catch(function(){
       errEl.textContent = "Couldn't start — check your connection and try again.";
@@ -1719,7 +1817,8 @@
       pausedMinutes: Math.round(pausedMs / 60000),
       pauses: pauseLog,
       held: false,
-      holdReason: ''
+      holdReason: '',
+      planId: take.planId || null
     };
     if(extraFields){ Object.assign(entry, extraFields); }
 
@@ -1766,6 +1865,7 @@
     finalizeTake(editor, take, notes, pauseReason).then(function(res){
       if(res && res.error){ throw new Error(res.error); }
       state.activeTake = null;
+      if(take.planId){ state.finishPromptPlanId = take.planId; renderPlan(); }
 
       document.getElementById('f-video').value = '';
       document.getElementById('f-notes').value = '';
@@ -1811,6 +1911,7 @@
     finalizeTake(editor, take, notes, pauseReason, { held: true, holdReason: holdReason }).then(function(res){
       if(res && res.error){ throw new Error(res.error); }
       state.activeTake = null;
+      if(take.planId){ setPlanStatus(take.planId, 'held', { holdReason: holdReason }); }
 
       document.getElementById('f-video').value = '';
       document.getElementById('f-notes').value = '';
@@ -1884,7 +1985,8 @@
       pausedAt: null,
       pauseReason: '',
       pauseLog: [],
-      resumedFromHold: true
+      resumedFromHold: true,
+      planId: matchPlanId(video, stage)
     };
 
     withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
@@ -1895,12 +1997,180 @@
       state.allActiveTakes[editor] = take;
       state.activeTake = take;
       document.getElementById('lock-warning').style.display = 'none';
+      if(take.planId){ setPlanStatus(take.planId, 'doing'); }
 
       var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
       withRetry(function(){ return setLock(video, lockData); }).then(function(){ state.locks[video] = lockData; });
 
       enterActiveTakeUI();
     });
+  }
+
+  /* ---------- today's plan ----------
+     plans/{id}: editor, video, project, stage, priority (high|normal|low), deadline (YYYY-MM-DD),
+     deadlineTime (HH:MM or ''), planDate (day it was added), createdAt, midDay (added after the
+     editor's first take that day), status (todo|doing|held|done), doneAt, startedAt */
+  var PRIO_RANK = { high: 0, normal: 1, low: 2 };
+  var STATUS_RANK = { doing: 0, held: 2, todo: 1, done: 3 };
+
+  function watchPlans(editorName){
+    return db.collection('plans').where('editor', '==', editorName).onSnapshot(function(snap){
+      var arr = [];
+      snap.forEach(function(doc){ var d = doc.data(); d.id = doc.id; arr.push(d); });
+      state.plans = arr;
+      renderPlan();
+    }, function(){});
+  }
+
+  function matchPlanId(video, stage){
+    var v = String(video || '').trim().toLowerCase();
+    var p = state.plans.filter(function(x){ return x.status !== 'done' && String(x.video).trim().toLowerCase() === v && (!stage || x.stage === stage); })[0];
+    return p ? p.id : null;
+  }
+
+  function dueInfo(p){
+    var t = todayStr(new Date());
+    if(!p.deadline) return { cls: '', label: 'No deadline', late: false };
+    var d0 = new Date(t + 'T00:00:00'), d1 = new Date(p.deadline + 'T00:00:00');
+    var days = Math.round((d1 - d0) / 86400000);
+    var time = p.deadlineTime ? ' ' + p.deadlineTime : '';
+    var lateToday = days === 0 && p.deadlineTime && (pad(new Date().getHours()) + ':' + pad(new Date().getMinutes())) > p.deadlineTime;
+    if(p.status !== 'done' && (days < 0 || lateToday)) return { cls: 'late', label: days < 0 ? ('Overdue ' + (-days) + 'd') : ('Overdue · was due ' + p.deadlineTime), late: true };
+    if(days === 0) return { cls: 'today', label: 'Due today' + time, late: false };
+    if(days === 1) return { cls: '', label: 'Due tomorrow' + time, late: false };
+    return { cls: '', label: 'Due ' + formatDateLabel(p.deadline) + time, late: false };
+  }
+
+  function sortedPlans(){
+    return state.plans.slice().sort(function(a, b){
+      return (STATUS_RANK[a.status] - STATUS_RANK[b.status])
+        || ((PRIO_RANK[a.priority] || 1) - (PRIO_RANK[b.priority] || 1))
+        || String(a.deadline || '9999').localeCompare(String(b.deadline || '9999'))
+        || String(a.deadlineTime || '99').localeCompare(String(b.deadlineTime || '99'));
+    });
+  }
+
+  function renderPlan(){
+    var card = document.getElementById('plan-card');
+    if(!card || !state.identity || state.identity.role !== 'editor') return;
+    card.style.display = 'block';
+    var t = todayStr(new Date());
+    // Today's plan = everything not done, plus items finished today.
+    var items = sortedPlans().filter(function(p){ return p.status !== 'done' || (p.doneAt || '').slice(0, 10) === t; });
+    var open = items.filter(function(p){ return p.status !== 'done'; });
+    var doneToday = items.filter(function(p){ return p.status === 'done'; });
+    var late = open.filter(function(p){ return dueInfo(p).late; }).length;
+    document.getElementById('plan-count').textContent = open.length ? ('· ' + open.length + ' open' + (doneToday.length ? ', ' + doneToday.length + ' done today' : '') + (late ? ', ' + late + ' overdue' : '')) : (doneToday.length ? '· all ' + doneToday.length + ' done today' : '');
+    var list = document.getElementById('plan-list');
+    var shown = state.showDonePlans ? items : open;
+    if(!items.length){
+      list.innerHTML = '<div class="empty-state">No episodes planned yet. Tap “+ Add episode” to plan your day — add each episode with its deadline and priority.</div>';
+    } else {
+      list.innerHTML = shown.map(function(p){
+        var due = dueInfo(p);
+        var tags = '';
+        if(p.midDay) tags += '<span class="plan-tag mid">Added mid-day</span>';
+        if(p.planDate && p.planDate < t && p.status !== 'done') tags += '<span class="plan-tag carry">Carried over</span>';
+        if(p.status === 'held') tags += '<span class="plan-tag held" title="' + escapeHtml(p.holdReason || '') + '">On hold</span>';
+        if(p.status === 'doing') tags += '<span class="plan-tag">In progress</span>';
+        var busy = !!state.activeTake;
+        var actions = p.status === 'done'
+          ? '<button type="button" class="switch-link" style="color:var(--navy-soft)" data-plan-undo="' + escapeHtml(p.id) + '">undo</button>'
+          : (state.activeTake && state.activeTake.planId === p.id
+              ? '<span class="plan-tag">Timer running</span>'
+              : '<button type="button" class="plan-btn start" data-plan-start="' + escapeHtml(p.id) + '"' + (busy ? ' disabled title="Finish or hold your current take first"' : '') + '>▶ Start</button>')
+            + '<button type="button" class="plan-btn done" data-plan-done="' + escapeHtml(p.id) + '" title="This stage is finished">✓ Done</button>'
+            + '<button type="button" class="plan-x" data-plan-del="' + escapeHtml(p.id) + '" title="Remove from plan" aria-label="Remove">✕</button>';
+        return '<div class="plan-item ' + (p.status === 'done' ? 'done' : p.status === 'doing' ? 'doing' : '') + (due.late ? ' late' : '') + '">'
+          + '<span class="plan-prio ' + escapeHtml(p.priority || 'normal') + '">' + escapeHtml(p.priority || 'normal') + '</span>'
+          + '<div class="plan-main"><div class="plan-video" dir="auto">' + escapeHtml(p.video) + '</div>'
+          + '<div class="plan-meta"><span>' + escapeHtml(p.project || '') + ' · ' + escapeHtml(p.stage || '') + '</span><span class="plan-due ' + due.cls + '">' + escapeHtml(due.label) + '</span>' + tags + '</div></div>'
+          + '<div class="plan-actions">' + actions + '</div></div>';
+      }).join('') + (doneToday.length ? '<button type="button" class="plan-done-toggle" id="plan-done-toggle">' + (state.showDonePlans ? 'Hide' : 'Show') + ' ' + doneToday.length + ' finished today</button>' : '');
+    }
+    var fp = document.getElementById('finish-prompt-wrap');
+    var fpItem = state.finishPromptPlanId && state.plans.filter(function(p){ return p.id === state.finishPromptPlanId && p.status !== 'done'; })[0];
+    fp.innerHTML = fpItem ? '<div class="finish-prompt"><span>Did you finish <b>' + escapeHtml(fpItem.stage) + '</b> on <b>' + escapeHtml(fpItem.video) + '</b>?</span>'
+      + '<button type="button" class="plan-btn done" data-plan-done="' + escapeHtml(fpItem.id) + '">✓ Yes, mark done</button>'
+      + '<button type="button" class="plan-btn" data-plan-later="1">Not yet</button></div>' : '';
+    // keep the Start-a-take button state in step with plans
+    document.querySelectorAll('[data-plan-start]').forEach(function(b){ b.disabled = !!state.activeTake; });
+  }
+
+  function populatePlanSelects(){
+    var ps = document.getElementById('p-project'), ss = document.getElementById('p-stage');
+    var cp = ps.value, cs = ss.value;
+    ps.innerHTML = state.projects.map(function(p){ return '<option>' + escapeHtml(p) + '</option>'; }).join('');
+    ss.innerHTML = state.stages.map(function(s){ return '<option>' + escapeHtml(s) + '</option>'; }).join('');
+    if(cp && state.projects.indexOf(cp) >= 0) ps.value = cp;
+    if(cs && state.stages.indexOf(cs) >= 0) ss.value = cs;
+  }
+
+  function openPlanForm(){
+    populatePlanSelects();
+    var f = document.getElementById('plan-form');
+    f.style.display = 'block';
+    if(!document.getElementById('p-deadline').value){ document.getElementById('p-deadline').value = todayStr(new Date()); }
+    document.getElementById('plan-form-msg').textContent = '';
+    document.getElementById('p-video').focus();
+  }
+
+  function addPlanItem(){
+    var video = document.getElementById('p-video').value.trim();
+    var project = document.getElementById('p-project').value;
+    var stage = document.getElementById('p-stage').value;
+    var deadline = document.getElementById('p-deadline').value;
+    var time = document.getElementById('p-time').value;
+    var prioEl = document.querySelector('input[name="p-prio"]:checked');
+    var msg = document.getElementById('plan-form-msg');
+    if(!video || !deadline){ msg.textContent = 'Episode and deadline are required.'; return; }
+    var editor = state.identity.name;
+    var t = todayStr(new Date());
+    var startedToday = state.entries.some(function(e){ return e.editor === editor && e.date === t; }) || !!state.activeTake;
+    var dup = state.plans.filter(function(p){ return p.status !== 'done' && p.video.trim().toLowerCase() === video.toLowerCase() && p.stage === stage; })[0];
+    if(dup){ msg.textContent = 'This episode and stage is already in your plan.'; return; }
+    var item = {
+      editor: editor, video: video, project: project, stage: stage,
+      priority: prioEl ? prioEl.value : 'normal', deadline: deadline, deadlineTime: time || '',
+      planDate: t, createdAt: new Date().toISOString(), midDay: startedToday,
+      status: 'todo', doneAt: null, startedAt: null
+    };
+    var btn = document.getElementById('plan-save-btn');
+    btn.disabled = true;
+    var id = uid();
+    withRetry(function(){ return db.collection('plans').doc(id).set(item).then(function(){ return { ok: true }; }).catch(function(err){ return { error: String(err) }; }); }).then(function(res){
+      if(res && res.error){ msg.textContent = "Couldn't add — check your connection."; return; }
+      document.getElementById('p-video').value = '';
+      document.getElementById('p-time').value = '';
+      var np = document.querySelector('input[name="p-prio"][value="normal"]'); if(np) np.checked = true;
+      msg.textContent = 'Added ' + video + '. Add another or close.';
+      document.getElementById('p-video').focus();
+    }).finally(function(){ btn.disabled = false; });
+  }
+
+  function setPlanStatus(id, status, extra){
+    var data = { status: status };
+    if(status === 'done') data.doneAt = new Date().toISOString();
+    if(status === 'doing') data.startedAt = new Date().toISOString();
+    if(status === 'todo') data.doneAt = null;
+    if(extra) Object.assign(data, extra);
+    state.plans.forEach(function(p){ if(p.id === id) Object.assign(p, data); });
+    if(state.finishPromptPlanId === id && status === 'done') state.finishPromptPlanId = null;
+    renderPlan();
+    return db.collection('plans').doc(id).set(data, { merge: true }).catch(function(){});
+  }
+
+  function startFromPlan(id){
+    var p = state.plans.filter(function(x){ return x.id === id; })[0];
+    if(!p || state.activeTake) return;
+    populateProjectSelect(p.project);
+    populateStageSelect(p.stage);
+    document.getElementById('f-video').value = p.video;
+    document.getElementById('f-project').value = p.project;
+    document.getElementById('f-stage').value = p.stage;
+    state.pendingPlanId = id;
+    state.finishPromptPlanId = null;
+    startTake();
   }
 
   function monthBoundsForOffset(offset){
@@ -2076,6 +2346,26 @@
     var confirmHoldBtn = e.target.closest('#confirm-hold-btn');
     if(confirmHoldBtn){ holdTake(); return; }
 
+    var planStart = e.target.closest('[data-plan-start]');
+    if(planStart){ startFromPlan(planStart.getAttribute('data-plan-start')); return; }
+    var planDone = e.target.closest('[data-plan-done]');
+    if(planDone){ setPlanStatus(planDone.getAttribute('data-plan-done'), 'done'); return; }
+    var planUndo = e.target.closest('[data-plan-undo]');
+    if(planUndo){ setPlanStatus(planUndo.getAttribute('data-plan-undo'), 'todo'); return; }
+    var planLater = e.target.closest('[data-plan-later]');
+    if(planLater){ state.finishPromptPlanId = null; renderPlan(); return; }
+    var planDel = e.target.closest('[data-plan-del]');
+    if(planDel){
+      var pid = planDel.getAttribute('data-plan-del');
+      if(planDel.getAttribute('data-confirm') === '1'){ db.collection('plans').doc(pid).delete().catch(function(){}); return; }
+      planDel.setAttribute('data-confirm', '1'); planDel.textContent = 'Remove?'; planDel.style.fontSize = '12px'; planDel.style.color = 'var(--red)';
+      setTimeout(function(){ if(planDel.isConnected){ planDel.removeAttribute('data-confirm'); planDel.textContent = '✕'; planDel.style.fontSize = ''; planDel.style.color = ''; } }, 4000);
+      return;
+    }
+    if(e.target.closest('#plan-add-toggle')){ openPlanForm(); return; }
+    if(e.target.closest('#plan-cancel-btn')){ document.getElementById('plan-form').style.display = 'none'; return; }
+    if(e.target.closest('#plan-done-toggle')){ state.showDonePlans = !state.showDonePlans; renderPlan(); return; }
+
     var resumeHeldBtn = e.target.closest('[data-resume-held]');
     if(resumeHeldBtn){
       resumeHeldItem(
@@ -2169,6 +2459,10 @@
       e.preventDefault();
       startTake();
     }
+    if(e.target && e.target.id === 'plan-form'){
+      e.preventDefault();
+      addPlanItem();
+    }
   });
 
   document.addEventListener('change', function(e){
@@ -2250,11 +2544,14 @@
     loadProjects().then(function(projects){
       state.projects = projects;
       populateProjectSelect();
+      populatePlanSelects();
     });
+    if(state.identity.role === 'editor'){ watchPlans(state.identity.name); setInterval(renderPlan, 60000); }
 
     loadStages().then(function(stages){
       state.stages = stages;
       populateStageSelect();
+      populatePlanSelects();
       renderStageManageList();
     });
 
@@ -2316,6 +2613,7 @@
       if(state.activeTab === 'dashboard'){
         renderActiveTakesPanel();
       }
+      renderPlan();
     });
   }
 
