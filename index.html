@@ -666,7 +666,7 @@
     <div class="form-error" id="pw-error"></div>
   </div>
 
-  <footer>Editors see only their own log here. The manager view aggregates the whole team.<br><span style="opacity:.7;">Version 2026-10-06 · sheet sync</span></footer>
+  <footer>Editors see only their own log here. The manager view aggregates the whole team.<br><span style="opacity:.7;">Version 2026-10-06b · low-read sync</span></footer>
   </div><!-- /main-screen -->
 </div>
 
@@ -956,20 +956,50 @@
     return persistListConfig('stages', stages);
   }
 
-  function watchCollection(name, onUpdate){
-    return db.collection(name).onSnapshot(function(snap){
-      var map = {};
-      snap.forEach(function(doc){ map[doc.id] = doc.data(); });
-      onUpdate(map);
-    }, function(){ /* ignore transient listener errors; last-known state stays on screen */ });
+  function showDbNotice(err){
+    var quota = err && (err.code === 'resource-exhausted' || /quota/i.test(String(err.message || err)));
+    var el = document.getElementById('db-notice');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'db-notice';
+      el.style.cssText = 'background:#FCE1E7;color:#9A0029;border:2px solid #F2003C;border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:13px;font-weight:600;';
+      var app = document.getElementById('app');
+      app.insertBefore(el, app.firstChild);
+    }
+    el.textContent = quota
+      ? "Today's free database quota has been used up, so some data may be missing or won't save until it resets (around 10:00 Cairo time)."
+      : "Having trouble reaching the database — what you see may be out of date.";
+    el.style.display = 'block';
   }
 
-  function watchEntries(onUpdate){
-    return db.collection('entries').onSnapshot(function(snap){
+  function clearDbNotice(){
+    var el = document.getElementById('db-notice');
+    if(el){ el.style.display = 'none'; }
+  }
+
+  // Every listener reads each matching document once when the page opens, so
+  // queries are kept as narrow as possible (an editor only loads their own data).
+  function watchQueryMap(query, onUpdate){
+    return query.onSnapshot(function(snap){
+      var map = {};
+      snap.forEach(function(doc){ map[doc.id] = doc.data(); });
+      clearDbNotice();
+      onUpdate(map);
+    }, function(err){ console.error('Listener error:', err); showDbNotice(err); });
+  }
+
+  function watchCollection(name, onUpdate){
+    return watchQueryMap(db.collection(name), onUpdate);
+  }
+
+  function watchEntries(onUpdate, editorName){
+    var q = editorName ? db.collection('entries').where('editor', '==', editorName) : db.collection('entries');
+    return q.onSnapshot(function(snap){
       var arr = [];
       snap.forEach(function(doc){ arr.push(doc.data()); });
+      clearDbNotice();
       onUpdate(arr);
-    }, function(){});
+    }, function(err){ console.error('Listener error:', err); showDbNotice(err); });
   }
 
   function loadIdentity(){
@@ -1779,6 +1809,9 @@
   function planErrorText(err, verb){
     var raw = String(err && err.message ? err.message : err).replace(/^(Error:\s*)+/, '');
     console.error('Plan operation failed:', err);
+    if(/quota|resource-exhausted/i.test(raw)){
+      return "Can't " + verb + " — today's free database quota is used up. Try again after it resets (around 10:00 Cairo time).";
+    }
     if(/permission/i.test(raw)){
       return "Can't " + verb + " — the Firestore rules still need the plans collection added.";
     }
@@ -2024,7 +2057,9 @@
       createdAt: new Date().toISOString(),
       status: 'todo',
       heldReason: '',
-      doneAt: ''
+      doneAt: '',
+      doneDate: '',
+      syncPending: false
     };
 
     setPlanButtonsDisabled(true);
@@ -2096,7 +2131,9 @@
       createdAt: new Date().toISOString(),
       status: 'todo',
       heldReason: '',
-      doneAt: ''
+      doneAt: '',
+      doneDate: '',
+      syncPending: false
     };
 
     var btn = document.getElementById('assign-task-btn');
@@ -2155,7 +2192,7 @@
       var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
       setLock(plan.video, lockData).then(function(){ state.locks[plan.video] = lockData; });
 
-      var startPatch = { sheetStatus: 'In progress', updatedAt: new Date().toISOString(), updatedBy: 'app' };
+      var startPatch = { sheetStatus: 'In progress', syncPending: true, updatedAt: new Date().toISOString(), updatedBy: 'app' };
       patchPlanDoc(plan.id, startPatch).then(function(){ Object.assign(plan, startPatch); });
 
       document.getElementById('lock-warning').style.display = 'none';
@@ -2173,7 +2210,7 @@
 
   function performDropPlan(planId){
     state.confirmDropPlan = null;
-    var patch = { status: 'dropped', droppedAt: new Date().toISOString() };
+    var patch = { status: 'dropped', droppedAt: new Date().toISOString(), droppedDate: todayStr() };
     withRetry(function(){ return patchPlanDoc(planId, patch); }).then(function(res){
       var errEl = document.getElementById('plan-error');
       if(res && res.error){ errEl.textContent = planErrorText(res.error, 'remove this item'); return; }
@@ -2236,6 +2273,8 @@
           var patch = {
             status: closes ? 'done' : 'todo',
             doneAt: closes ? entry.loggedAt : '',
+            doneDate: closes ? todayStr() : '',
+            syncPending: true,
             heldReason: entry.outcome === 'resume_later' ? (entry.outcomeNote || 'Resume later') : '',
             sheetStatus: OUTCOME_SHEET_STATUS[entry.outcome] || 'In progress',
             outcomeNote: entry.outcomeNote || '',
@@ -2816,7 +2855,7 @@
         var esel = document.getElementById('dash-editor-select');
         if(esel && esel.value){ renderEditorDetail(esel.value); }
       }
-    });
+    }, state.identity.role === 'editor' ? state.identity.name : null);
 
     watchCollection('locks', function(locks){
       state.locks = locks;
@@ -2857,15 +2896,34 @@
       }
     });
 
-    watchCollection('plans', function(plans){
-      state.plans = plans;
+    // Plans are loaded as small, separate queries (open items, plus today's finished /
+    // removed ones) instead of the whole history, and merged into state.plans.
+    var planDay = todayStr();
+    state.planParts = {};
+    function setPlanPart(name, map){
+      state.planParts[name] = map;
+      var merged = {};
+      ['open', 'doneToday', 'droppedToday'].forEach(function(k){
+        if(state.planParts[k]){ Object.assign(merged, state.planParts[k]); }
+      });
+      state.plans = merged;
       if(state.activeTab === 'dashboard'){
         renderPlansPanel();
       } else {
         renderPlanList();
         refreshDatalists();
       }
-    });
+    }
+    var plansCol = db.collection('plans');
+    if(state.identity.role === 'editor'){
+      var meName = state.identity.name;
+      watchQueryMap(plansCol.where('editor', '==', meName).where('status', '==', 'todo'), function(m){ setPlanPart('open', m); });
+      watchQueryMap(plansCol.where('editor', '==', meName).where('doneDate', '==', planDay), function(m){ setPlanPart('doneToday', m); });
+    } else {
+      watchQueryMap(plansCol.where('status', '==', 'todo'), function(m){ setPlanPart('open', m); });
+      watchQueryMap(plansCol.where('doneDate', '==', planDay), function(m){ setPlanPart('doneToday', m); });
+      watchQueryMap(plansCol.where('droppedDate', '==', planDay), function(m){ setPlanPart('droppedToday', m); });
+    }
 
     // keep "overdue" flags fresh without needing any other activity
     setInterval(function(){
