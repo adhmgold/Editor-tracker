@@ -142,7 +142,7 @@
   .btn-hold:hover{filter:brightness(1.05);}
   #pause-banner{background:var(--orange-tint);border:2px dashed var(--orange);border-radius:12px;
     padding:14px;margin-bottom:14px;}
-  #hold-prompt{background:var(--pink-tint);border:2px dashed var(--pink);border-radius:12px;
+  #end-prompt{background:var(--pink-tint);border:2px dashed var(--pink);border-radius:12px;
     padding:14px;margin-bottom:14px;}
   .pause-badge{font-family:var(--font-display);font-weight:800;font-size:14px;color:#B8460B;margin-bottom:8px;}
   .pause-flag{font-family:var(--font-body);font-size:10px;color:var(--navy-faint);background:var(--cream-deep);
@@ -486,13 +486,23 @@
         <button type="button" class="btn-primary" id="resume-btn">▶ Resume</button>
       </div>
 
-      <div id="hold-prompt" style="display:none;">
+      <div id="end-prompt" style="display:none;">
         <div class="field">
-          <label for="hold-reason-input">Why are you holding this episode?</label>
-          <input type="text" id="hold-reason-input" dir="auto" placeholder="e.g. waiting on VO files, client feedback needed">
+          <label for="end-outcome">How did this take end?</label>
+          <select id="end-outcome">
+            <option value="finished">Finished</option>
+            <option value="ready_to_upload">Ready to upload</option>
+            <option value="in_progress">Still in progress</option>
+            <option value="resume_later">Resume later</option>
+            <option value="other">Something else…</option>
+          </select>
         </div>
-        <button type="button" class="btn-primary" id="confirm-hold-btn">Confirm Hold</button>
-        <button type="button" class="switch-link" id="cancel-hold-btn">Cancel</button>
+        <div class="field">
+          <label for="end-note" id="end-note-label">Note (optional)</label>
+          <input type="text" id="end-note" dir="auto" placeholder="Anything the team should know?">
+        </div>
+        <button type="button" class="btn-primary" id="confirm-end-btn">Confirm</button>
+        <button type="button" class="switch-link" id="cancel-end-btn">Cancel</button>
       </div>
 
       <div class="field">
@@ -501,7 +511,6 @@
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;" id="active-take-buttons">
         <button type="button" class="btn-primary btn-pause" id="pause-btn">⏸ Pause</button>
-        <button type="button" class="btn-primary btn-hold" id="hold-btn">📌 Hold</button>
         <button type="button" class="btn-primary btn-end" id="end-btn">■ End Take</button>
       </div>
       <div class="form-error" id="end-error"></div>
@@ -657,7 +666,7 @@
     <div class="form-error" id="pw-error"></div>
   </div>
 
-  <footer>Editors see only their own log here. The manager view aggregates the whole team.<br><span style="opacity:.7;">Version 2026-10-05b · plans &amp; tasks</span></footer>
+  <footer>Editors see only their own log here. The manager view aggregates the whole team.<br><span style="opacity:.7;">Version 2026-10-06 · sheet sync</span></footer>
   </div><!-- /main-screen -->
 </div>
 
@@ -1405,7 +1414,7 @@
 
   function exportMonthlyReport(){
     var monthStart = monthStartStr();
-    var headers = ['Editor','Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Notes'];
+    var headers = ['Editor','Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Outcome','Outcome Note','Notes'];
     var rows = state.entries.filter(function(e){ return e.date >= monthStart; })
       .sort(function(a,b){ return a.editor.localeCompare(b.editor) || a.date.localeCompare(b.date); })
       .map(function(e){
@@ -1413,7 +1422,7 @@
           Editor: e.editor, Date: e.date, Started: formatTimeOfDay(e.startedAt), Ended: formatTimeOfDay(e.loggedAt),
           Video: e.video, Project: e.project || '', Stage: e.stage,
           Hours: e.hours.toFixed(2), Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
-          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '',
+          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '', Outcome: e.outcome || '', 'Outcome Note': e.outcomeNote || '',
           Notes: e.notes || ''
         };
       });
@@ -1423,7 +1432,7 @@
 
   function exportEditorReport(editorName){
     var monthStart = monthStartStr();
-    var headers = ['Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Notes'];
+    var headers = ['Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Outcome','Outcome Note','Notes'];
     var rows = state.entries.filter(function(e){ return e.editor === editorName && e.date >= monthStart; })
       .sort(function(a,b){ return a.date.localeCompare(b.date); })
       .map(function(e){
@@ -1431,7 +1440,7 @@
           Date: e.date, Started: formatTimeOfDay(e.startedAt), Ended: formatTimeOfDay(e.loggedAt),
           Video: e.video, Project: e.project || '', Stage: e.stage, Hours: e.hours.toFixed(2),
           Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
-          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '',
+          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '', Outcome: e.outcome || '', 'Outcome Note': e.outcomeNote || '',
           Notes: e.notes || ''
         };
       });
@@ -1822,6 +1831,7 @@
     var flags = '';
     if(plan.assignedBy){ flags += ' <span class="plan-flag assigned">assigned by ' + escapeHtml(plan.assignedBy) + '</span>'; }
     if(plan.addedMidDay){ flags += ' <span class="plan-flag mid">added mid-day</span>'; }
+    if(plan.status === 'todo' && plan.needsEditing){ flags += ' <span class="plan-flag late">✎ needs editing</span>'; }
     if(plan.status === 'done'){
       var doneTxt = plan.doneAt ? ('done ' + formatTimeOfDay(plan.doneAt)) : 'done';
       var dl = planDeadlineMs(plan);
@@ -2145,6 +2155,9 @@
       var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
       setLock(plan.video, lockData).then(function(){ state.locks[plan.video] = lockData; });
 
+      var startPatch = { sheetStatus: 'In progress', updatedAt: new Date().toISOString(), updatedBy: 'app' };
+      patchPlanDoc(plan.id, startPatch).then(function(){ Object.assign(plan, startPatch); });
+
       document.getElementById('lock-warning').style.display = 'none';
       enterActiveTakeUI();
     }).catch(function(err){
@@ -2203,7 +2216,9 @@
       pauses: pauseLog,
       held: false,
       holdReason: '',
-      planId: take.planId || ''
+      planId: take.planId || '',
+      outcome: 'finished',
+      outcomeNote: ''
     };
     if(extraFields){ Object.assign(entry, extraFields); }
 
@@ -2216,9 +2231,19 @@
         if(take.planId){
           // Ending a planned take finishes that plan item; holding it parks the item
           // (with the reason) so it stays on the editor's list to pick up later.
-          var patch = entry.held
-            ? { status: 'todo', heldReason: entry.holdReason || 'On hold' }
-            : { status: 'done', doneAt: entry.loggedAt, heldReason: '' };
+          var closes = entry.outcome === 'finished' || entry.outcome === 'ready_to_upload';
+          var prevHours = (state.plans[take.planId] && state.plans[take.planId].hoursLogged) || 0;
+          var patch = {
+            status: closes ? 'done' : 'todo',
+            doneAt: closes ? entry.loggedAt : '',
+            heldReason: entry.outcome === 'resume_later' ? (entry.outcomeNote || 'Resume later') : '',
+            sheetStatus: OUTCOME_SHEET_STATUS[entry.outcome] || 'In progress',
+            outcomeNote: entry.outcomeNote || '',
+            hoursLogged: Math.round((prevHours + entry.hours) * 1000) / 1000,
+            updatedAt: new Date().toISOString(),
+            updatedBy: 'app'
+          };
+          if(closes){ patch.needsEditing = false; }
           planStep = withRetry(function(){ return patchPlanDoc(take.planId, patch); }).then(function(resP){
             if(resP && resP.error){ throw new Error(resP.error); }
             if(state.plans[take.planId]){ Object.assign(state.plans[take.planId], patch); }
@@ -2248,72 +2273,79 @@
       .catch(function(err){ return { error: String(err), entry: entry }; });
   }
 
+  var OUTCOME_SHEET_STATUS = {
+    finished: 'Done',
+    ready_to_upload: 'Ready to upload',
+    in_progress: 'In progress',
+    resume_later: 'Resume later',
+    other: 'Other'
+  };
+
+  function updateEndPromptLabels(){
+    var outcome = document.getElementById('end-outcome').value;
+    var label = document.getElementById('end-note-label');
+    var input = document.getElementById('end-note');
+    if(outcome === 'resume_later'){
+      label.textContent = 'Why are you pausing it? (optional)';
+      input.placeholder = 'e.g. waiting on VO files, client feedback needed';
+    } else if(outcome === 'other'){
+      label.textContent = 'What happened? (required)';
+      input.placeholder = 'Describe the status in a few words';
+    } else {
+      label.textContent = 'Note (optional)';
+      input.placeholder = 'Anything the team should know?';
+    }
+  }
+
+  // Clicking "End Take" now asks how the take ended before anything is saved.
   function endTake(){
     if(!state.activeTake) return;
-    var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
-    var take = state.activeTake;
-    var notes = document.getElementById('f-notes-active').value.trim();
-    var pauseReasonInput = document.getElementById('pause-reason-input');
-    var pauseReason = pauseReasonInput ? pauseReasonInput.value.trim() : null;
-    var errEl = document.getElementById('end-error');
-    errEl.textContent = '';
-
-    var btn = document.getElementById('end-btn');
-    btn.disabled = true;
-
-    finalizeTake(editor, take, notes, pauseReason).then(function(res){
-      if(res && res.error){ throw new Error(res.error); }
-      state.activeTake = null;
-
-      document.getElementById('f-video').value = '';
-      document.getElementById('f-notes').value = '';
-      document.getElementById('f-notes-active').value = '';
-      refreshDatalists();
-      renderFeed();
-      if(state.activeTab === 'dashboard') renderDashboard();
-      exitActiveTakeUI();
-    }).catch(function(){
-      errEl.textContent = "Couldn't save — check your connection and try again.";
-    }).finally(function(){
-      btn.disabled = false;
-    });
-  }
-
-  function showHoldPrompt(){
-    document.getElementById('hold-prompt').style.display = 'block';
+    document.getElementById('end-error').textContent = '';
+    document.getElementById('end-outcome').value = 'finished';
+    document.getElementById('end-note').value = '';
+    updateEndPromptLabels();
+    document.getElementById('end-prompt').style.display = 'block';
     document.getElementById('active-take-buttons').style.display = 'none';
-    var input = document.getElementById('hold-reason-input');
-    input.value = '';
-    input.focus();
+    document.getElementById('end-note').focus();
   }
 
-  function hideHoldPrompt(){
-    document.getElementById('hold-prompt').style.display = 'none';
+  function hideEndPrompt(){
+    document.getElementById('end-prompt').style.display = 'none';
     document.getElementById('active-take-buttons').style.display = 'flex';
   }
 
-  function holdTake(){
+  function submitEndTake(){
     if(!state.activeTake) return;
     var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
     var take = state.activeTake;
     var notes = document.getElementById('f-notes-active').value.trim();
     var pauseReasonInput = document.getElementById('pause-reason-input');
     var pauseReason = pauseReasonInput ? pauseReasonInput.value.trim() : null;
-    var holdReason = document.getElementById('hold-reason-input').value.trim();
+    var outcome = document.getElementById('end-outcome').value;
+    var outcomeNote = document.getElementById('end-note').value.trim();
     var errEl = document.getElementById('end-error');
     errEl.textContent = '';
 
-    var btn = document.getElementById('confirm-hold-btn');
+    if(outcome === 'other' && !outcomeNote){
+      errEl.textContent = 'Add a short note describing the status.';
+      document.getElementById('end-note').focus();
+      return;
+    }
+
+    var extra = { outcome: outcome, outcomeNote: outcomeNote };
+    if(outcome === 'resume_later'){ extra.held = true; extra.holdReason = outcomeNote; }
+
+    var btn = document.getElementById('confirm-end-btn');
     btn.disabled = true;
 
-    finalizeTake(editor, take, notes, pauseReason, { held: true, holdReason: holdReason }).then(function(res){
+    finalizeTake(editor, take, notes, pauseReason, extra).then(function(res){
       if(res && res.error){ throw new Error(res.error); }
       state.activeTake = null;
 
       document.getElementById('f-video').value = '';
       document.getElementById('f-notes').value = '';
       document.getElementById('f-notes-active').value = '';
-      hideHoldPrompt();
+      hideEndPrompt();
       refreshDatalists();
       renderFeed();
       if(state.activeTab === 'dashboard') renderDashboard();
@@ -2455,7 +2487,7 @@
     var take = state.allActiveTakes[editorName];
     state.confirmForceEnd = null;
     if(!take){ renderActiveTakesPanel(); return; }
-    finalizeTake(editorName, take).then(function(res){
+    finalizeTake(editorName, take, null, null, { outcome: 'in_progress', outcomeNote: 'Ended by manager' }).then(function(res){
       if(res && res.error){ window.alert("Couldn't end that take — try again."); return; }
       renderActiveTakesPanel();
     });
@@ -2576,12 +2608,8 @@
     var resumeBtn = e.target.closest('#resume-btn');
     if(resumeBtn){ resumeTake(); return; }
 
-    var holdBtn = e.target.closest('#hold-btn');
-    if(holdBtn){ showHoldPrompt(); return; }
-    var cancelHoldBtn = e.target.closest('#cancel-hold-btn');
-    if(cancelHoldBtn){ hideHoldPrompt(); return; }
-    var confirmHoldBtn = e.target.closest('#confirm-hold-btn');
-    if(confirmHoldBtn){ holdTake(); return; }
+    if(e.target.closest('#cancel-end-btn')){ hideEndPrompt(); return; }
+    if(e.target.closest('#confirm-end-btn')){ submitEndTake(); return; }
 
     var resumeHeldBtn = e.target.closest('[data-resume-held]');
     if(resumeHeldBtn){
@@ -2694,6 +2722,9 @@
       } else {
         document.getElementById('add-stage-row').style.display = 'none';
       }
+    }
+    if(e.target && e.target.id === 'end-outcome'){
+      updateEndPromptLabels();
     }
     if(e.target && e.target.id === 'dash-video-select'){
       renderVideoDetail(e.target.value);
