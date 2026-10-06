@@ -666,7 +666,7 @@
     <div class="form-error" id="pw-error"></div>
   </div>
 
-  <footer>Editors see only their own log here. The manager view aggregates the whole team.<br><span style="opacity:.7;">Version 2026-10-06b · low-read sync</span></footer>
+  <footer>Editors see only their own log here. The manager view aggregates the whole team.<br><span style="opacity:.7;">Version 2026-10-06c · free-plan reads</span></footer>
   </div><!-- /main-screen -->
 </div>
 
@@ -702,7 +702,7 @@
     }
   }; // local fallback only — Firestore seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, plans: {}, confirmDropPlan: null, takesLoaded: false, activeTake: null, allActiveTakes: {}, timerInterval: null, myHistoryMonthOffset: 0 };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, plans: {}, confirmDropPlan: null, takesLoaded: false, entryParts: { live: [], extra: {} }, monthFetching: {}, videoIndex: [], activeTake: null, allActiveTakes: {}, timerInterval: null, myHistoryMonthOffset: 0 };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -759,6 +759,13 @@
     return Math.max(0, totalMs - pausedMs);
   }
 
+  // a planned task carries its own running total, so no history needs to be loaded
+  function resumedPriorHours(take){
+    var plan = take.planId ? state.plans[take.planId] : null;
+    if(plan && typeof plan.hoursLogged === 'number'){ return plan.hoursLogged; }
+    return state.identity ? priorLoggedHours(state.identity.name, take.video) : 0;
+  }
+
   function priorLoggedHours(editor, video){
     return state.entries
       .filter(function(e){ return e.editor === editor && e.video === video; })
@@ -775,8 +782,7 @@
   // held item — a plain Start Take on the same video always begins at zero.
   function displayWorkedMs(take, nowMs){
     if(!take.resumedFromHold || !state.identity){ return computeWorkedMs(take, nowMs); }
-    var prior = priorLoggedHours(state.identity.name, take.video);
-    return prior * 3600000 + computeWorkedMs(take, nowMs);
+    return resumedPriorHours(take) * 3600000 + computeWorkedMs(take, nowMs);
   }
 
   function pauseBadgeHtml(entry){
@@ -992,14 +998,82 @@
     return watchQueryMap(db.collection(name), onUpdate);
   }
 
-  function watchEntries(onUpdate, editorName){
-    var q = editorName ? db.collection('entries').where('editor', '==', editorName) : db.collection('entries');
+  // opts.editor + opts.month -> one editor's month (equality filters only, so no
+  // composite index is needed); opts.since -> everything on/after a date (manager).
+  function watchEntries(onUpdate, opts){
+    var q = db.collection('entries');
+    if(opts && opts.editor){ q = q.where('editor', '==', opts.editor).where('month', '==', opts.month); }
+    else if(opts && opts.since){ q = q.where('date', '>=', opts.since); }
     return q.onSnapshot(function(snap){
       var arr = [];
       snap.forEach(function(doc){ arr.push(doc.data()); });
       clearDbNotice();
       onUpdate(arr);
     }, function(err){ console.error('Listener error:', err); showDbNotice(err); });
+  }
+
+  // state.entries = the live window plus any months / videos fetched on demand
+  function rebuildEntries(){
+    var seen = {};
+    var out = [];
+    function add(arr){
+      arr.forEach(function(e){ if(!seen[e.id]){ seen[e.id] = true; out.push(e); } });
+    }
+    add(state.entryParts.live);
+    Object.keys(state.entryParts.extra).forEach(function(k){ add(state.entryParts.extra[k]); });
+    state.entries = out;
+  }
+
+  function entryWindowStart(){
+    var d = new Date();
+    if(d.getDate() <= 7){ d.setDate(1); d.setMonth(d.getMonth() - 1); }
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-01';
+  }
+
+  // One-time: give old entries a `month` field (so queries can be narrow) and build the
+  // video-name index. Whoever opens the app first after the update does the work.
+  function migrateEntryMonths(role, name){
+    var localKey = 'ss_months_done_' + (role === 'manager' ? 'manager' : name);
+    try{ if(localStorage.getItem(localKey)){ return Promise.resolve(); } } catch(e){}
+    var metaRef = db.collection('config').doc('meta');
+    return metaRef.get().then(function(doc){
+      if(doc.exists && doc.data().entriesMonthDone){ return null; }
+      var q = role === 'manager' ? db.collection('entries') : db.collection('entries').where('editor', '==', name);
+      return q.get().then(function(snap){
+        var pending = [];
+        var videos = {};
+        snap.forEach(function(d){
+          var e = d.data();
+          if(e.video){ videos[e.video] = true; }
+          if(!e.month && e.date){ pending.push({ ref: d.ref, month: e.date.slice(0, 7) }); }
+        });
+        var chain = Promise.resolve();
+        for(var i = 0; i < pending.length; i += 400){
+          (function(chunk){
+            chain = chain.then(function(){
+              var batch = db.batch();
+              chunk.forEach(function(p){ batch.set(p.ref, { month: p.month }, { merge: true }); });
+              return batch.commit();
+            });
+          })(pending.slice(i, i + 400));
+        }
+        if(role === 'manager'){
+          var names = Object.keys(videos);
+          for(var j = 0; j < names.length; j += 200){
+            (function(part){
+              chain = chain.then(function(){
+                return db.collection('config').doc('videoIndex').set(
+                  { list: firebase.firestore.FieldValue.arrayUnion.apply(null, part) }, { merge: true });
+              });
+            })(names.slice(j, j + 200));
+          }
+          chain = chain.then(function(){ return metaRef.set({ entriesMonthDone: true }, { merge: true }); });
+        }
+        return chain;
+      });
+    }).then(function(){
+      try{ localStorage.setItem(localKey, '1'); } catch(e){}
+    }).catch(function(err){ console.error('Month migration skipped:', err); });
   }
 
   function loadIdentity(){
@@ -1274,11 +1348,31 @@
 
   /* ---------- dashboard ---------- */
   /* ---------- video lookup ---------- */
+  // Fetches just this video's entries (a handful of reads) instead of holding all history.
+  function lookUpVideo(video){
+    if(!video){ renderVideoDetail(''); return; }
+    var wrap = document.getElementById('dash-video-detail');
+    wrap.innerHTML = '<div class="empty-state">Loading…</div>';
+    db.collection('entries').where('video', '==', video).get().then(function(snap){
+      var arr = [];
+      snap.forEach(function(d){ arr.push(d.data()); });
+      state.entryParts.extra['v|' + video] = arr;
+      rebuildEntries();
+      renderVideoDetail(video);
+    }).catch(function(err){
+      wrap.innerHTML = '<div class="empty-state">Couldn\'t load this video — try again.</div>';
+      showDbNotice(err);
+    });
+  }
+
   function populateDashVideoSelect(){
     var sel = document.getElementById('dash-video-select');
     if(!sel) return;
     var current = sel.value;
-    var videos = Array.from(new Set(state.entries.map(function(e){ return e.video; }))).sort();
+    var fromPlans = Object.keys(state.plans).map(function(k){ return state.plans[k].video; });
+    var videos = Array.from(new Set(
+      state.videoIndex.concat(state.entries.map(function(e){ return e.video; })).concat(fromPlans)
+    )).filter(Boolean).sort();
     sel.innerHTML = '<option value="">Select a video…</option>' + videos.map(function(v){
       return '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>';
     }).join('');
@@ -1354,7 +1448,8 @@
     var sel = document.getElementById('dash-editor-select');
     if(!sel) return;
     var current = sel.value;
-    var editors = Array.from(new Set(state.entries.map(function(e){ return e.editor; }))).sort();
+    var rosterNames = state.credentials ? Object.keys(state.credentials.editors) : [];
+    var editors = Array.from(new Set(rosterNames.concat(state.entries.map(function(e){ return e.editor; })))).sort();
     sel.innerHTML = '<option value="">Select an editor…</option>' + editors.map(function(name){
       return '<option value="'+escapeHtml(name)+'">'+escapeHtml(name)+'</option>';
     }).join('');
@@ -1596,7 +1691,7 @@
           + '</div>';
         if(expanded){
           row += '<div class="editor-row-detail">'
-            + '<div class="editor-row-sub">'+p.videosAllTime+' video'+(p.videosAllTime===1?'':'s')+' overall — time per video</div>'
+            + '<div class="editor-row-sub">'+p.videosAllTime+' video'+(p.videosAllTime===1?'':'s')+' in the loaded period — time per video (use Look up a video for full history)</div>'
             + (p.videoList.length === 0 ? '<div class="empty-state">Nothing logged yet.</div>' : p.videoList.map(function(v){
                 return '<div class="ev-row"><span class="ev-video" title="'+escapeHtml(v.video)+'">'+escapeHtml(v.video)+'</span><span class="ev-hours">'+formatHM(v.hours)+'</span></div>';
               }).join(''))
@@ -1625,7 +1720,7 @@
   function enterActiveTakeUI(){
     document.getElementById('take-active').style.display = 'block';
     var at = state.activeTake;
-    var priorHrs = at.resumedFromHold ? priorLoggedHours(state.identity.name, at.video) : 0;
+    var priorHrs = at.resumedFromHold ? resumedPriorHours(at) : 0;
     var baseNote = priorHrs ? (' <span style="font-weight:500;color:var(--navy-faint);">(includes '+formatHM(priorHrs)+' already logged on this video)</span>') : '';
     var plan = at.planId ? state.plans[at.planId] : null;
     var dueNote = plan ? (' <span style="font-weight:500;color:var(--navy-faint);">· due '+escapeHtml(planDueText(plan))+'</span>') : '';
@@ -2255,12 +2350,19 @@
       holdReason: '',
       planId: take.planId || '',
       outcome: 'finished',
-      outcomeNote: ''
+      outcomeNote: '',
+      month: todayStr(new Date(startedMs)).slice(0, 7)
     };
     if(extraFields){ Object.assign(entry, extraFields); }
 
     return db.collection('entries').doc(entry.id).set(entry)
-      .then(function(){ return withRetry(function(){ return clearActiveTakeDoc(editor); }); })
+      .then(function(){
+        // keeps a tiny list of every video name so the manager's lookup never has to scan history
+        db.collection('config').doc('videoIndex')
+          .set({ list: firebase.firestore.FieldValue.arrayUnion(entry.video) }, { merge: true })
+          .catch(function(){});
+        return withRetry(function(){ return clearActiveTakeDoc(editor); });
+      })
       .then(function(res){
         if(res && res.error){ throw new Error(res.error); }
         delete state.allActiveTakes[editor];
@@ -2489,6 +2591,32 @@
     var bounds = monthBoundsForOffset(state.myHistoryMonthOffset);
     document.getElementById('my-history-month-label').textContent = bounds.label;
     document.getElementById('my-history-next').disabled = state.myHistoryMonthOffset >= 0;
+
+    var monthKey = bounds.start.slice(0, 7);
+    if(monthKey !== todayStr().slice(0, 7)){
+      var cacheKey = 'm|' + state.identity.name + '|' + monthKey;
+      if(!state.entryParts.extra[cacheKey]){
+        wrap.innerHTML = '<div class="empty-state">Loading…</div>';
+        document.getElementById('my-history-summary').textContent = '';
+        if(!state.monthFetching[cacheKey]){
+          state.monthFetching[cacheKey] = true;
+          db.collection('entries').where('editor', '==', state.identity.name).where('month', '==', monthKey).get()
+            .then(function(snap){
+              var arr = [];
+              snap.forEach(function(d){ arr.push(d.data()); });
+              state.entryParts.extra[cacheKey] = arr;
+              rebuildEntries();
+              delete state.monthFetching[cacheKey];
+              renderMyHistory();
+            }).catch(function(err){
+              delete state.monthFetching[cacheKey];
+              wrap.innerHTML = '<div class="empty-state">Couldn\'t load this month — try again.</div>';
+              showDbNotice(err);
+            });
+        }
+        return;
+      }
+    }
 
     var rows = state.entries.filter(function(e){
       return e.editor === state.identity.name && e.date >= bounds.start && e.date < bounds.end;
@@ -2766,7 +2894,7 @@
       updateEndPromptLabels();
     }
     if(e.target && e.target.id === 'dash-video-select'){
-      renderVideoDetail(e.target.value);
+      lookUpVideo(e.target.value);
     }
     if(e.target && e.target.id === 'dash-editor-select'){
       renderEditorDetail(e.target.value);
@@ -2838,8 +2966,9 @@
       renderStageManageList();
     });
 
-    watchEntries(function(entries){
-      state.entries = entries;
+    function onEntries(entries){
+      state.entryParts.live = entries;
+      rebuildEntries();
       state.loading = false;
       refreshDatalists();
       renderFeed();
@@ -2854,10 +2983,40 @@
         if(vsel && vsel.value){ renderVideoDetail(vsel.value); }
         var esel = document.getElementById('dash-editor-select');
         if(esel && esel.value){ renderEditorDetail(esel.value); }
+        backfillMissingMonths(entries);
       }
-    }, state.identity.role === 'editor' ? state.identity.name : null);
+    }
 
-    watchCollection('locks', function(locks){
+    // entries logged by an out-of-date copy of the app have no `month` yet: fix them up
+    function backfillMissingMonths(entries){
+      if(state.backfilledOnce){ return; }
+      var missing = entries.filter(function(e){ return !e.month && e.date; });
+      if(!missing.length){ return; }
+      state.backfilledOnce = true;
+      var batch = db.batch();
+      missing.slice(0, 400).forEach(function(e){
+        batch.set(db.collection('entries').doc(e.id), { month: e.date.slice(0, 7) }, { merge: true });
+      });
+      batch.commit().catch(function(){});
+    }
+
+    var entryOpts = state.identity.role === 'editor'
+      ? { editor: state.identity.name, month: todayStr().slice(0, 7) }
+      : { since: entryWindowStart() };
+    migrateEntryMonths(state.identity.role, state.identity.name).then(function(){
+      watchEntries(onEntries, entryOpts);
+      if(state.identity.role === 'manager'){
+        // read after the one-time tidy-up so a first-ever load sees the freshly built index
+        db.collection('config').doc('videoIndex').get().then(function(doc){
+          state.videoIndex = (doc.exists && doc.data().list) || [];
+          populateDashVideoSelect();
+        }).catch(function(){});
+      }
+    });
+
+    // only locks touched in the last few hours matter (older ones are ignored anyway)
+    var lockCutoff = new Date(Date.now() - LOCK_TTL_MS).toISOString();
+    watchQueryMap(db.collection('locks').where('lastActiveAt', '>=', lockCutoff), function(locks){
       state.locks = locks;
       checkVideoLock();
     });
