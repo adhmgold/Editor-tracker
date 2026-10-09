@@ -142,12 +142,38 @@
   .btn-hold:hover{filter:brightness(1.05);}
   #pause-banner{background:var(--orange-tint);border:2px dashed var(--orange);border-radius:12px;
     padding:14px;margin-bottom:14px;}
-  #hold-prompt{background:var(--pink-tint);border:2px dashed var(--pink);border-radius:12px;
+  #end-prompt{background:var(--pink-tint);border:2px dashed var(--pink);border-radius:12px;
     padding:14px;margin-bottom:14px;}
   .pause-badge{font-family:var(--font-display);font-weight:800;font-size:14px;color:#B8460B;margin-bottom:8px;}
   .pause-flag{font-family:var(--font-body);font-size:10px;color:var(--navy-faint);background:var(--cream-deep);
     padding:2px 7px;border-radius:8px;flex:none;cursor:help;white-space:nowrap;}
 
+  #panel-log.active{display:flex;flex-direction:column;}
+  #panel-log #take-active{order:-2;}
+  #panel-log #plan-card{order:-1;}
+
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+  .plan-flag.assigned{background:var(--indigo-tint);color:var(--indigo);}
+  .tag-color-red{background:var(--red-tint);color:#9A0029;}
+  .tag-color-gray{background:var(--cream-deep);color:var(--navy-soft);}
+  .plan-row{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px dashed var(--line);
+    font-size:13px;flex-wrap:wrap;}
+  .plan-row:last-child{border-bottom:none;}
+  .plan-main{flex:1;min-width:150px;}
+  .plan-title{font-weight:700;}
+  .plan-sub{font-size:11px;color:var(--navy-faint);margin-top:2px;line-height:1.5;}
+  .plan-row.done .plan-title{text-decoration:line-through;color:var(--navy-faint);}
+  .plan-row.dropped .plan-title{text-decoration:line-through;color:var(--navy-faint);}
+  .plan-flag{font-size:10px;font-family:var(--font-display);font-weight:700;padding:2px 8px;border-radius:10px;
+    white-space:nowrap;flex:none;}
+  .plan-flag.late{background:var(--red-tint);color:#9A0029;}
+  .plan-flag.ok{background:var(--teal-tint);color:#0E7A56;}
+  .plan-flag.info{background:var(--cream-deep);color:var(--navy-soft);}
+  .plan-flag.mid{background:var(--pink-tint);color:#C22E96;}
+  .plan-group{font-family:var(--font-display);font-weight:800;font-size:13px;margin:14px 0 4px;
+    display:flex;justify-content:space-between;align-items:baseline;}
+  .plan-group:first-child{margin-top:0;}
+  .plan-group small{font-weight:600;color:var(--navy-faint);font-size:11px;}
   .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--teal);
     margin-left:6px;animation:livepulse 1.6s infinite;}
   @keyframes livepulse{
@@ -318,58 +344,10 @@
   .locked-field{background:var(--cream-deep) !important;color:var(--navy-soft);cursor:not-allowed;}
 
   @media (max-width:520px){
-    .row2{grid-template-columns:1fr;}
+    .row2,.row3{grid-template-columns:1fr;}
     .feed-video,.feed-editor{width:auto;max-width:90px;}
     .slate{flex-direction:column;align-items:flex-start;gap:8px;}
   }
-
-  /* ---------- today's plan ---------- */
-  .plan-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
-  .plan-head .card-head{margin-bottom:0;}
-  .plan-count{font-size:12px;color:var(--navy-soft);font-family:var(--font-body);font-weight:500;}
-  .plan-list{display:flex;flex-direction:column;gap:8px;}
-  .plan-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid var(--line);border-radius:12px;background:var(--cream);flex-wrap:wrap;}
-  .plan-item.doing{border-color:var(--indigo);background:var(--indigo-tint);}
-  .plan-item.late{border-color:var(--red);}
-  .plan-item.done{opacity:.55;}
-  .plan-item.done .plan-video{text-decoration:line-through;}
-  .plan-prio{font-family:var(--font-display);font-weight:800;font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:7px;border:1.5px solid var(--navy);flex:none;}
-  .plan-prio.high{background:var(--red);color:#fff;}
-  .plan-prio.normal{background:var(--yellow);color:var(--navy);}
-  .plan-prio.low{background:#fff;color:var(--navy-soft);}
-  .plan-main{flex:1 1 200px;min-width:0;}
-  .plan-video{font-family:var(--font-display);font-weight:800;font-size:14px;overflow-wrap:anywhere;}
-  .plan-meta{font-size:12px;color:var(--navy-soft);display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px;}
-  .plan-due{font-weight:600;}
-  .plan-due.late{color:var(--red);}
-  .plan-due.today{color:#B8460B;}
-  .plan-tag{font-size:10px;font-family:var(--font-display);font-weight:700;padding:2px 7px;border-radius:7px;background:var(--cream-deep);color:var(--navy-soft);}
-  .plan-tag.mid{background:var(--orange-tint);color:#B8460B;}
-  .plan-tag.carry{background:var(--indigo-tint);color:var(--indigo);}
-  .plan-tag.held{background:var(--pink-tint);color:#C22E96;}
-  .plan-actions{display:flex;gap:6px;flex:none;align-items:center;}
-  .plan-btn{font-family:var(--font-display);font-weight:800;font-size:12px;border:2px solid var(--navy);border-radius:9px;padding:6px 10px;cursor:pointer;background:#fff;color:var(--navy);box-shadow:0 2px 0 var(--navy);}
-  .plan-btn.start{background:var(--indigo);color:#fff;}
-  .plan-btn.done{background:var(--teal);color:#fff;}
-  .plan-btn:disabled{opacity:.4;cursor:not-allowed;}
-  .plan-x{background:none;border:none;color:var(--navy-faint);font-size:16px;cursor:pointer;padding:2px 6px;}
-  .plan-x:hover{color:var(--red);}
-  #plan-form input[type=time]{width:100%;background:var(--cream);border:2px solid var(--line);color:var(--navy);padding:9px 12px;border-radius:9px;font-family:var(--font-body);font-size:14px;}
-  #plan-form{border:2px dashed var(--line);border-radius:12px;padding:14px;margin-top:12px;background:#fff;}
-  .prio-seg{display:flex;gap:6px;}
-  .prio-seg label{flex:1;}
-  .prio-seg input{position:absolute;opacity:0;pointer-events:none;}
-  .prio-seg span{display:block;text-align:center;padding:8px 6px;border:2px solid var(--line);border-radius:9px;font-family:var(--font-display);font-weight:800;font-size:12px;cursor:pointer;background:var(--cream);}
-  .prio-seg input:checked + span{border-color:var(--navy);}
-  .prio-seg input[value=high]:checked + span{background:var(--red);color:#fff;}
-  .prio-seg input[value=normal]:checked + span{background:var(--yellow);}
-  .prio-seg input[value=low]:checked + span{background:#fff;}
-  .prio-seg input:focus-visible + span{outline:2px solid var(--indigo);outline-offset:2px;}
-  .plan-done-toggle{background:none;border:none;color:var(--navy-soft);font-size:12px;cursor:pointer;margin-top:8px;font-family:var(--font-body);text-decoration:underline;}
-  .finish-prompt{margin-top:12px;padding:12px;border:2px solid var(--teal);background:var(--teal-tint);border-radius:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;}
-  .plan-tag.edits.fix{background:#FCE1E7;color:#C8002F}
-  .plan-tag.edits.change{background:#E4E3FF;color:#3B30C9}
-  .plan-note{font-size:12px;color:#5B6676;margin-top:3px;line-height:1.4}
 </style>
 </head>
 <body>
@@ -418,58 +396,14 @@
   </div>
 
   <div class="panel active" id="panel-log">
-    <div class="card" id="plan-card" style="display:none;">
-      <div class="plan-head">
-        <div class="card-head">Today's plan <span class="plan-count" id="plan-count"></span></div>
-        <button type="button" class="btn-primary btn-small" id="plan-add-toggle">+ Add episode</button>
-      </div>
-      <div class="plan-list" id="plan-list"><div class="empty-state">Loading…</div></div>
-      <div id="finish-prompt-wrap"></div>
-      <form id="plan-form" style="display:none;" autocomplete="off">
-        <div class="row2">
-          <div class="field">
-            <label for="p-video">Video / Episode</label>
-            <input type="text" id="p-video" list="video-list" dir="auto" placeholder="e.g. G2-U1-L03-V02" required>
-          </div>
-          <div class="field">
-            <label for="p-project">Project</label>
-            <select id="p-project"></select>
-          </div>
-        </div>
-        <div class="row2">
-          <div class="field">
-            <label for="p-stage">Stage</label>
-            <select id="p-stage"></select>
-          </div>
-          <div class="field">
-            <label>Priority</label>
-            <div class="prio-seg">
-              <label><input type="radio" name="p-prio" value="high"><span>High</span></label>
-              <label><input type="radio" name="p-prio" value="normal" checked><span>Normal</span></label>
-              <label><input type="radio" name="p-prio" value="low"><span>Low</span></label>
-            </div>
-          </div>
-        </div>
-        <div class="row2">
-          <div class="field">
-            <label for="p-deadline">Deadline</label>
-            <input type="date" id="p-deadline" required>
-          </div>
-          <div class="field">
-            <label for="p-time">Time (optional)</label>
-            <input type="time" id="p-time">
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <button type="submit" class="btn-primary btn-small" id="plan-save-btn">Add to plan</button>
-          <button type="button" class="switch-link" id="plan-cancel-btn" style="color:var(--navy-soft)">Close</button>
-          <span class="plan-count" id="plan-form-msg"></span>
-        </div>
-      </form>
+    <div class="card" id="plan-card">
+      <div class="card-head">Today's plan</div>
+      <div id="plan-list"><div class="empty-state">Loading…</div></div>
+      <div class="form-error" id="plan-error"></div>
     </div>
 
     <div class="card" id="take-setup">
-      <div class="card-head">Start a take</div>
+      <div class="card-head">Add to your plan</div>
       <form id="log-form" autocomplete="off">
         <div class="row2">
           <div class="field">
@@ -506,12 +440,34 @@
           </div>
         </div>
 
-        <div class="field">
-          <label for="f-notes">Notes (optional)</label>
-          <textarea id="f-notes" dir="auto" placeholder="What are you about to work on?"></textarea>
+        <div class="row3">
+          <div class="field">
+            <label for="f-priority">Priority</label>
+            <select id="f-priority">
+              <option value="high">High</option>
+              <option value="normal" selected>Normal</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-deadline-date">Due date *</label>
+            <input type="date" id="f-deadline-date" required>
+          </div>
+          <div class="field">
+            <label for="f-deadline">Time (optional)</label>
+            <input type="time" id="f-deadline">
+          </div>
         </div>
 
-        <button type="submit" class="btn-primary" id="start-btn" disabled>Checking…</button>
+        <div class="field">
+          <label for="f-notes">Notes (optional)</label>
+          <textarea id="f-notes" dir="auto" placeholder="Anything to remember about this one?"></textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="submit" class="btn-primary" id="start-btn">Add to plan</button>
+          <button type="button" class="btn-primary btn-pause" id="add-start-btn">Add &amp; start now ▸</button>
+        </div>
         <div class="form-error" id="form-error"></div>
       </form>
     </div>
@@ -530,13 +486,23 @@
         <button type="button" class="btn-primary" id="resume-btn">▶ Resume</button>
       </div>
 
-      <div id="hold-prompt" style="display:none;">
+      <div id="end-prompt" style="display:none;">
         <div class="field">
-          <label for="hold-reason-input">Why are you holding this episode?</label>
-          <input type="text" id="hold-reason-input" dir="auto" placeholder="e.g. waiting on VO files, client feedback needed">
+          <label for="end-outcome">How did this take end?</label>
+          <select id="end-outcome">
+            <option value="finished">Finished — not on Frame.io yet</option>
+            <option value="ready_to_upload">Ready to upload — uploaded to Frame.io</option>
+            <option value="in_progress">Still in progress</option>
+            <option value="resume_later">Resume later</option>
+            <option value="other">Something else…</option>
+          </select>
         </div>
-        <button type="button" class="btn-primary" id="confirm-hold-btn">Confirm Hold</button>
-        <button type="button" class="switch-link" id="cancel-hold-btn">Cancel</button>
+        <div class="field">
+          <label for="end-note" id="end-note-label">Note (optional)</label>
+          <input type="text" id="end-note" dir="auto" placeholder="Anything the team should know?">
+        </div>
+        <button type="button" class="btn-primary" id="confirm-end-btn">Confirm</button>
+        <button type="button" class="switch-link" id="cancel-end-btn">Cancel</button>
       </div>
 
       <div class="field">
@@ -545,7 +511,6 @@
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;" id="active-take-buttons">
         <button type="button" class="btn-primary btn-pause" id="pause-btn">⏸ Pause</button>
-        <button type="button" class="btn-primary btn-hold" id="hold-btn">📌 Hold</button>
         <button type="button" class="btn-primary btn-end" id="end-btn">■ End Take</button>
       </div>
       <div class="form-error" id="end-error"></div>
@@ -577,6 +542,59 @@
   </div>
 
   <div class="panel" id="panel-dashboard">
+    <div class="card">
+      <div class="card-head">Plans &amp; tasks <span class="live-dot" aria-hidden="true"></span></div>
+      <div id="plans-overview"><div class="empty-state">Loading…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">Assign a task</div>
+      <div class="row2">
+        <div class="field">
+          <label for="m-editor">Editor</label>
+          <select id="m-editor"></select>
+        </div>
+        <div class="field">
+          <label for="m-video">Video / Episode</label>
+          <input type="text" id="m-video" list="video-list" dir="auto" placeholder="e.g. ADOG04EP12">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="m-project">Project</label>
+          <select id="m-project"></select>
+        </div>
+        <div class="field">
+          <label for="m-stage">Stage</label>
+          <select id="m-stage"></select>
+        </div>
+      </div>
+      <div class="row3">
+        <div class="field">
+          <label for="m-priority">Priority</label>
+          <select id="m-priority">
+            <option value="high">High</option>
+            <option value="normal" selected>Normal</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="m-date">Due date *</label>
+          <input type="date" id="m-date">
+        </div>
+        <div class="field">
+          <label for="m-time">Time (optional)</label>
+          <input type="time" id="m-time">
+        </div>
+      </div>
+      <div class="field">
+        <label for="m-notes">Notes for the editor (optional)</label>
+        <textarea id="m-notes" dir="auto" placeholder="Anything they should know about this task?"></textarea>
+      </div>
+      <button type="button" class="btn-primary" id="assign-task-btn">Assign task</button>
+      <div class="form-error" id="assign-error"></div>
+    </div>
+
     <div class="card">
       <div class="card-head">Currently working <span class="live-dot" aria-hidden="true"></span></div>
       <div id="currently-working-list"><div class="empty-state">Loading…</div></div>
@@ -648,7 +666,7 @@
     <div class="form-error" id="pw-error"></div>
   </div>
 
-  <footer>Editors see only their own log here. The manager view aggregates the whole team.</footer>
+  <footer>Editors see only their own log here. The manager view aggregates the whole team.<br><span style="opacity:.7;">Version 2026-10-07 · sheet rules</span></footer>
   </div><!-- /main-screen -->
 </div>
 
@@ -684,7 +702,7 @@
     }
   }; // local fallback only — Firestore seeds itself with these on first run
 
-  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, activeTake: null, allActiveTakes: {}, timerInterval: null, myHistoryMonthOffset: 0, plans: [], pendingPlanId: null, finishPromptPlanId: null, showDonePlans: false };
+  var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, plans: {}, confirmDropPlan: null, takesLoaded: false, entryParts: { live: [], extra: {} }, monthFetching: {}, videoIndex: [], activeTake: null, allActiveTakes: {}, timerInterval: null, myHistoryMonthOffset: 0 };
 
   function escapeHtml(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -741,6 +759,13 @@
     return Math.max(0, totalMs - pausedMs);
   }
 
+  // a planned task carries its own running total, so no history needs to be loaded
+  function resumedPriorHours(take){
+    var plan = take.planId ? state.plans[take.planId] : null;
+    if(plan && typeof plan.hoursLogged === 'number'){ return plan.hoursLogged; }
+    return state.identity ? priorLoggedHours(state.identity.name, take.video) : 0;
+  }
+
   function priorLoggedHours(editor, video){
     return state.entries
       .filter(function(e){ return e.editor === editor && e.video === video; })
@@ -757,8 +782,7 @@
   // held item — a plain Start Take on the same video always begins at zero.
   function displayWorkedMs(take, nowMs){
     if(!take.resumedFromHold || !state.identity){ return computeWorkedMs(take, nowMs); }
-    var prior = priorLoggedHours(state.identity.name, take.video);
-    return prior * 3600000 + computeWorkedMs(take, nowMs);
+    return resumedPriorHours(take) * 3600000 + computeWorkedMs(take, nowMs);
   }
 
   function pauseBadgeHtml(entry){
@@ -938,20 +962,118 @@
     return persistListConfig('stages', stages);
   }
 
-  function watchCollection(name, onUpdate){
-    return db.collection(name).onSnapshot(function(snap){
-      var map = {};
-      snap.forEach(function(doc){ map[doc.id] = doc.data(); });
-      onUpdate(map);
-    }, function(){ /* ignore transient listener errors; last-known state stays on screen */ });
+  function showDbNotice(err){
+    var quota = err && (err.code === 'resource-exhausted' || /quota/i.test(String(err.message || err)));
+    var el = document.getElementById('db-notice');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'db-notice';
+      el.style.cssText = 'background:#FCE1E7;color:#9A0029;border:2px solid #F2003C;border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:13px;font-weight:600;';
+      var app = document.getElementById('app');
+      app.insertBefore(el, app.firstChild);
+    }
+    el.textContent = quota
+      ? "Today's free database quota has been used up, so some data may be missing or won't save until it resets (around 10:00 Cairo time)."
+      : "Having trouble reaching the database — what you see may be out of date.";
+    el.style.display = 'block';
   }
 
-  function watchEntries(onUpdate){
-    return db.collection('entries').onSnapshot(function(snap){
+  function clearDbNotice(){
+    var el = document.getElementById('db-notice');
+    if(el){ el.style.display = 'none'; }
+  }
+
+  // Every listener reads each matching document once when the page opens, so
+  // queries are kept as narrow as possible (an editor only loads their own data).
+  function watchQueryMap(query, onUpdate){
+    return query.onSnapshot(function(snap){
+      var map = {};
+      snap.forEach(function(doc){ map[doc.id] = doc.data(); });
+      clearDbNotice();
+      onUpdate(map);
+    }, function(err){ console.error('Listener error:', err); showDbNotice(err); });
+  }
+
+  function watchCollection(name, onUpdate){
+    return watchQueryMap(db.collection(name), onUpdate);
+  }
+
+  // opts.editor + opts.month -> one editor's month (equality filters only, so no
+  // composite index is needed); opts.since -> everything on/after a date (manager).
+  function watchEntries(onUpdate, opts){
+    var q = db.collection('entries');
+    if(opts && opts.editor){ q = q.where('editor', '==', opts.editor).where('month', '==', opts.month); }
+    else if(opts && opts.since){ q = q.where('date', '>=', opts.since); }
+    return q.onSnapshot(function(snap){
       var arr = [];
       snap.forEach(function(doc){ arr.push(doc.data()); });
+      clearDbNotice();
       onUpdate(arr);
-    }, function(){});
+    }, function(err){ console.error('Listener error:', err); showDbNotice(err); });
+  }
+
+  // state.entries = the live window plus any months / videos fetched on demand
+  function rebuildEntries(){
+    var seen = {};
+    var out = [];
+    function add(arr){
+      arr.forEach(function(e){ if(!seen[e.id]){ seen[e.id] = true; out.push(e); } });
+    }
+    add(state.entryParts.live);
+    Object.keys(state.entryParts.extra).forEach(function(k){ add(state.entryParts.extra[k]); });
+    state.entries = out;
+  }
+
+  function entryWindowStart(){
+    var d = new Date();
+    if(d.getDate() <= 7){ d.setDate(1); d.setMonth(d.getMonth() - 1); }
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-01';
+  }
+
+  // One-time: give old entries a `month` field (so queries can be narrow) and build the
+  // video-name index. Whoever opens the app first after the update does the work.
+  function migrateEntryMonths(role, name){
+    var localKey = 'ss_months_done_' + (role === 'manager' ? 'manager' : name);
+    try{ if(localStorage.getItem(localKey)){ return Promise.resolve(); } } catch(e){}
+    var metaRef = db.collection('config').doc('meta');
+    return metaRef.get().then(function(doc){
+      if(doc.exists && doc.data().entriesMonthDone){ return null; }
+      var q = role === 'manager' ? db.collection('entries') : db.collection('entries').where('editor', '==', name);
+      return q.get().then(function(snap){
+        var pending = [];
+        var videos = {};
+        snap.forEach(function(d){
+          var e = d.data();
+          if(e.video){ videos[e.video] = true; }
+          if(!e.month && e.date){ pending.push({ ref: d.ref, month: e.date.slice(0, 7) }); }
+        });
+        var chain = Promise.resolve();
+        for(var i = 0; i < pending.length; i += 400){
+          (function(chunk){
+            chain = chain.then(function(){
+              var batch = db.batch();
+              chunk.forEach(function(p){ batch.set(p.ref, { month: p.month }, { merge: true }); });
+              return batch.commit();
+            });
+          })(pending.slice(i, i + 400));
+        }
+        if(role === 'manager'){
+          var names = Object.keys(videos);
+          for(var j = 0; j < names.length; j += 200){
+            (function(part){
+              chain = chain.then(function(){
+                return db.collection('config').doc('videoIndex').set(
+                  { list: firebase.firestore.FieldValue.arrayUnion.apply(null, part) }, { merge: true });
+              });
+            })(names.slice(j, j + 200));
+          }
+          chain = chain.then(function(){ return metaRef.set({ entriesMonthDone: true }, { merge: true }); });
+        }
+        return chain;
+      });
+    }).then(function(){
+      try{ localStorage.setItem(localKey, '1'); } catch(e){}
+    }).catch(function(err){ console.error('Month migration skipped:', err); });
   }
 
   function loadIdentity(){
@@ -1008,6 +1130,7 @@
       return '<option value="'+escapeHtml(p)+'">'+escapeHtml(p)+'</option>';
     }).join('') + '<option value="__add_new__">+ Add new project…</option>';
     if(current && state.projects.indexOf(current) !== -1){ sel.value = current; }
+    fillSimpleSelect('m-project', state.projects);
   }
 
   function populateStageSelect(selectedValue){
@@ -1017,6 +1140,7 @@
       return '<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>';
     }).join('') + '<option value="__add_new__">+ Add new stage…</option>';
     if(current && state.stages.indexOf(current) !== -1){ sel.value = current; }
+    fillSimpleSelect('m-stage', state.stages);
   }
 
   function confirmAddProject(){
@@ -1164,7 +1288,10 @@
 
   function refreshDatalists(){
     var editors = Array.from(new Set(state.entries.map(function(e){ return e.editor; }))).sort();
-    var videos = Array.from(new Set(state.entries.map(function(e){ return e.video; }))).sort();
+    var videos = Array.from(new Set(
+      state.entries.map(function(e){ return e.video; })
+        .concat(Object.keys(state.plans).map(function(k){ return state.plans[k].video; }))
+    )).sort();
     document.getElementById('editor-list').innerHTML = editors.map(function(e){ return '<option value="'+escapeHtml(e)+'">'; }).join('');
     document.getElementById('video-list').innerHTML = videos.map(function(v){ return '<option value="'+escapeHtml(v)+'">'; }).join('');
   }
@@ -1221,11 +1348,31 @@
 
   /* ---------- dashboard ---------- */
   /* ---------- video lookup ---------- */
+  // Fetches just this video's entries (a handful of reads) instead of holding all history.
+  function lookUpVideo(video){
+    if(!video){ renderVideoDetail(''); return; }
+    var wrap = document.getElementById('dash-video-detail');
+    wrap.innerHTML = '<div class="empty-state">Loading…</div>';
+    db.collection('entries').where('video', '==', video).get().then(function(snap){
+      var arr = [];
+      snap.forEach(function(d){ arr.push(d.data()); });
+      state.entryParts.extra['v|' + video] = arr;
+      rebuildEntries();
+      renderVideoDetail(video);
+    }).catch(function(err){
+      wrap.innerHTML = '<div class="empty-state">Couldn\'t load this video — try again.</div>';
+      showDbNotice(err);
+    });
+  }
+
   function populateDashVideoSelect(){
     var sel = document.getElementById('dash-video-select');
     if(!sel) return;
     var current = sel.value;
-    var videos = Array.from(new Set(state.entries.map(function(e){ return e.video; }))).sort();
+    var fromPlans = Object.keys(state.plans).map(function(k){ return state.plans[k].video; });
+    var videos = Array.from(new Set(
+      state.videoIndex.concat(state.entries.map(function(e){ return e.video; })).concat(fromPlans)
+    )).filter(Boolean).sort();
     sel.innerHTML = '<option value="">Select a video…</option>' + videos.map(function(v){
       return '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>';
     }).join('');
@@ -1301,7 +1448,8 @@
     var sel = document.getElementById('dash-editor-select');
     if(!sel) return;
     var current = sel.value;
-    var editors = Array.from(new Set(state.entries.map(function(e){ return e.editor; }))).sort();
+    var rosterNames = state.credentials ? Object.keys(state.credentials.editors) : [];
+    var editors = Array.from(new Set(rosterNames.concat(state.entries.map(function(e){ return e.editor; })))).sort();
     sel.innerHTML = '<option value="">Select an editor…</option>' + editors.map(function(name){
       return '<option value="'+escapeHtml(name)+'">'+escapeHtml(name)+'</option>';
     }).join('');
@@ -1391,7 +1539,7 @@
 
   function exportMonthlyReport(){
     var monthStart = monthStartStr();
-    var headers = ['Editor','Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Notes'];
+    var headers = ['Editor','Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Outcome','Outcome Note','Notes'];
     var rows = state.entries.filter(function(e){ return e.date >= monthStart; })
       .sort(function(a,b){ return a.editor.localeCompare(b.editor) || a.date.localeCompare(b.date); })
       .map(function(e){
@@ -1399,7 +1547,7 @@
           Editor: e.editor, Date: e.date, Started: formatTimeOfDay(e.startedAt), Ended: formatTimeOfDay(e.loggedAt),
           Video: e.video, Project: e.project || '', Stage: e.stage,
           Hours: e.hours.toFixed(2), Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
-          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '',
+          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '', Outcome: e.outcome || '', 'Outcome Note': e.outcomeNote || '',
           Notes: e.notes || ''
         };
       });
@@ -1409,7 +1557,7 @@
 
   function exportEditorReport(editorName){
     var monthStart = monthStartStr();
-    var headers = ['Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Notes'];
+    var headers = ['Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Outcome','Outcome Note','Notes'];
     var rows = state.entries.filter(function(e){ return e.editor === editorName && e.date >= monthStart; })
       .sort(function(a,b){ return a.date.localeCompare(b.date); })
       .map(function(e){
@@ -1417,7 +1565,7 @@
           Date: e.date, Started: formatTimeOfDay(e.startedAt), Ended: formatTimeOfDay(e.loggedAt),
           Video: e.video, Project: e.project || '', Stage: e.stage, Hours: e.hours.toFixed(2),
           Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
-          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '',
+          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '', Outcome: e.outcome || '', 'Outcome Note': e.outcomeNote || '',
           Notes: e.notes || ''
         };
       });
@@ -1543,7 +1691,7 @@
           + '</div>';
         if(expanded){
           row += '<div class="editor-row-detail">'
-            + '<div class="editor-row-sub">'+p.videosAllTime+' video'+(p.videosAllTime===1?'':'s')+' overall — time per video</div>'
+            + '<div class="editor-row-sub">'+p.videosAllTime+' video'+(p.videosAllTime===1?'':'s')+' in the loaded period — time per video (use Look up a video for full history)</div>'
             + (p.videoList.length === 0 ? '<div class="empty-state">Nothing logged yet.</div>' : p.videoList.map(function(v){
                 return '<div class="ev-row"><span class="ev-video" title="'+escapeHtml(v.video)+'">'+escapeHtml(v.video)+'</span><span class="ev-hours">'+formatHM(v.hours)+'</span></div>';
               }).join(''))
@@ -1570,13 +1718,14 @@
   }
 
   function enterActiveTakeUI(){
-    document.getElementById('take-setup').style.display = 'none';
     document.getElementById('take-active').style.display = 'block';
     var at = state.activeTake;
-    var priorHrs = at.resumedFromHold ? priorLoggedHours(state.identity.name, at.video) : 0;
+    var priorHrs = at.resumedFromHold ? resumedPriorHours(at) : 0;
     var baseNote = priorHrs ? (' <span style="font-weight:500;color:var(--navy-faint);">(includes '+formatHM(priorHrs)+' already logged on this video)</span>') : '';
+    var plan = at.planId ? state.plans[at.planId] : null;
+    var dueNote = plan ? (' <span style="font-weight:500;color:var(--navy-faint);">· due '+escapeHtml(planDueText(plan))+'</span>') : '';
     document.getElementById('active-take-summary').innerHTML =
-      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage)+baseNote;
+      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage)+dueNote+baseNote;
     document.getElementById('f-notes-active').value = at.notes || '';
     document.getElementById('pause-banner').style.display = at.paused ? 'block' : 'none';
     document.getElementById('pause-btn').style.display = at.paused ? 'none' : 'inline-block';
@@ -1584,12 +1733,13 @@
     tickTimer();
     if(state.timerInterval){ clearInterval(state.timerInterval); }
     state.timerInterval = setInterval(tickTimer, 1000);
+    renderPlanList();
   }
 
   function exitActiveTakeUI(){
     if(state.timerInterval){ clearInterval(state.timerInterval); state.timerInterval = null; }
     document.getElementById('take-active').style.display = 'none';
-    document.getElementById('take-setup').style.display = 'block';
+    renderPlanList();
   }
 
   function pauseTake(){
@@ -1636,6 +1786,7 @@
     var wrap = document.getElementById('editor-manage-list');
     if(!wrap || !state.credentials) return;
     var names = Object.keys(state.credentials.editors).sort();
+    populateAssignEditorSelect();
     wrap.innerHTML = names.map(function(name){
       var isConfirm = state.confirmDeleteEditor === name;
       var isResetting = state.resettingEditor === name;
@@ -1731,44 +1882,402 @@
 
 
   /* ---------- actions ---------- */
-  function startTake(){
+  /* ---------- daily plan ---------- */
+  var PRIORITY_RANK = { high: 0, normal: 1, low: 2 };
+  var PRIORITY_LABEL = { high: 'High', normal: 'Normal', low: 'Low' };
+  var PRIORITY_COLOR = { high: 'red', normal: 'indigo', low: 'gray' };
+
+  function savePlanDoc(plan){
+    return db.collection('plans').doc(plan.id).set(plan)
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
+  }
+
+  function patchPlanDoc(id, fields){
+    return db.collection('plans').doc(id).set(fields, { merge: true })
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
+  }
+
+  function planDue(plan){ return plan.dueDate || plan.date; }
+
+  function planErrorText(err, verb){
+    var raw = String(err && err.message ? err.message : err).replace(/^(Error:\s*)+/, '');
+    console.error('Plan operation failed:', err);
+    if(/quota|resource-exhausted/i.test(raw)){
+      return "Can't " + verb + " — today's free database quota is used up. Try again after it resets (around 10:00 Cairo time).";
+    }
+    if(/permission/i.test(raw)){
+      return "Can't " + verb + " — the Firestore rules still need the plans collection added.";
+    }
+    return "Couldn't " + verb + " — " + raw.slice(0, 180);
+  }
+
+  function planDeadlineMs(plan){
+    if(!plan.deadline){ return null; }
+    var t = new Date(planDue(plan) + 'T' + plan.deadline).getTime();
+    return isNaN(t) ? null : t;
+  }
+
+  function planIsOverdue(plan, nowMs){
+    if(plan.status !== 'todo'){ return false; }
+    var ms = planDeadlineMs(plan);
+    if(ms != null){ return nowMs > ms; }
+    return planDue(plan) < todayStr();
+  }
+
+  function planDueText(plan){
+    var due = planDue(plan);
+    var today = todayStr();
+    var t = new Date();
+    t.setDate(t.getDate() + 1);
+    var dayTxt = due === today ? 'today' : (due === todayStr(t) ? 'tomorrow' : formatDateLabel(due));
+    return dayTxt + (plan.deadline ? ' ' + plan.deadline : '');
+  }
+
+  function sortPlans(a, b){
+    var pa = PRIORITY_RANK[a.priority] != null ? PRIORITY_RANK[a.priority] : 1;
+    var pb = PRIORITY_RANK[b.priority] != null ? PRIORITY_RANK[b.priority] : 1;
+    if(pa !== pb){ return pa - pb; }
+    var ka = planDue(a) + ' ' + (a.deadline || '99:99');
+    var kb = planDue(b) + ' ' + (b.deadline || '99:99');
+    if(ka !== kb){ return ka < kb ? -1 : 1; }
+    return (a.createdAt || '').localeCompare(b.createdAt || '');
+  }
+
+  function allPlans(){
+    return Object.keys(state.plans).map(function(k){ return state.plans[k]; });
+  }
+
+  function editorHasActivityToday(editor){
+    if(state.activeTake){ return true; }
+    var today = todayStr();
+    return state.entries.some(function(e){ return e.editor === editor && e.date === today; });
+  }
+
+  function planFlagsHtml(plan, nowMs){
+    var flags = '';
+    if(plan.assignedBy){ flags += ' <span class="plan-flag assigned">assigned by ' + escapeHtml(plan.assignedBy) + '</span>'; }
+    if(plan.addedMidDay){ flags += ' <span class="plan-flag mid">added mid-day</span>'; }
+    if(plan.status === 'todo' && plan.needsEditing){ flags += ' <span class="plan-flag late">✎ needs editing</span>'; }
+    if(plan.status === 'done'){
+      var doneTxt = plan.doneAt ? ('done ' + formatTimeOfDay(plan.doneAt)) : 'done';
+      var dl = planDeadlineMs(plan);
+      var onTime = true;
+      if(plan.doneAt){
+        onTime = dl != null ? (new Date(plan.doneAt).getTime() <= dl) : (todayStr(new Date(plan.doneAt)) <= planDue(plan));
+      }
+      flags += ' <span class="plan-flag ' + (onTime ? 'ok' : 'late') + '">' + doneTxt + (onTime ? ' · on time' : ' · late') + '</span>';
+    } else if(plan.status === 'dropped'){
+      flags += ' <span class="plan-flag info">removed</span>';
+    } else if(planIsOverdue(plan, nowMs)){
+      flags += ' <span class="plan-flag late">overdue' + (planDue(plan) < todayStr() ? ' · was due ' + escapeHtml(planDueText(plan)) : '') + '</span>';
+    }
+    if(plan.status === 'todo' && plan.heldReason){
+      flags += ' <span class="plan-flag info">📌 on hold — ' + escapeHtml(plan.heldReason) + '</span>';
+    }
+    return flags;
+  }
+
+  function planSubHtml(plan, nowMs){
+    var parts = [escapeHtml(plan.project || ''), escapeHtml(plan.stage || ''), 'due ' + escapeHtml(planDueText(plan))];
+    return parts.filter(Boolean).join(' · ') + planFlagsHtml(plan, nowMs);
+  }
+
+  function planPriorityTag(plan){
+    var pr = PRIORITY_LABEL[plan.priority] ? plan.priority : 'normal';
+    return '<div class="feed-stage tag-color-' + PRIORITY_COLOR[pr] + '">' + PRIORITY_LABEL[pr] + '</div>';
+  }
+
+  function dropButtonsHtml(plan){
+    return state.confirmDropPlan === plan.id
+      ? '<button type="button" class="stage-delete confirm" data-confirm-drop-plan="' + escapeHtml(plan.id) + '">Remove?</button>'
+      : '<button type="button" class="stage-delete" data-ask-drop-plan="' + escapeHtml(plan.id) + '" aria-label="Remove task">×</button>';
+  }
+
+  function renderPlanList(){
+    var wrap = document.getElementById('plan-list');
+    if(!wrap || !state.identity || state.identity.role !== 'editor'){ return; }
+    var me = state.identity.name;
+    var today = todayStr();
+    var nowMs = Date.now();
+    var mine = allPlans().filter(function(p){ return p.editor === me; });
+    var open = mine.filter(function(p){ return p.status === 'todo'; }).sort(sortPlans);
+    var dueNow = open.filter(function(p){ return planDue(p) <= today; });
+    var upcoming = open.filter(function(p){ return planDue(p) > today; });
+    var done = mine.filter(function(p){
+      return p.status === 'done' && p.doneAt && todayStr(new Date(p.doneAt)) === today;
+    }).sort(function(a, b){ return (a.doneAt || '').localeCompare(b.doneAt || ''); });
+
+    if(open.length === 0 && done.length === 0){
+      wrap.innerHTML = '<div class="empty-state">Nothing planned yet — add your episodes below.</div>';
+      return;
+    }
+
+    function rowHtml(p){
+      var isActive = state.activeTake && state.activeTake.planId === p.id;
+      var actions;
+      if(isActive){
+        actions = '<span class="plan-flag ok">● working now</span>';
+      } else {
+        actions = '<button type="button" class="btn-primary btn-small" data-start-plan="' + escapeHtml(p.id) + '">Start ▸</button>'
+          + (p.assignedBy ? '' : dropButtonsHtml(p));
+      }
+      return '<div class="plan-row">'
+        + planPriorityTag(p)
+        + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
+        + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div>'
+        + (p.notes ? '<div class="plan-sub" style="color:var(--navy-soft);">' + escapeHtml(p.notes) + '</div>' : '')
+        + '</div>'
+        + actions
+        + '</div>';
+    }
+
+    var html = '';
+    if(dueNow.length){
+      html += '<div class="plan-group">Due today or overdue <small>' + dueNow.length + '</small></div>' + dueNow.map(rowHtml).join('');
+    }
+    if(upcoming.length){
+      html += '<div class="plan-group">Upcoming <small>' + upcoming.length + '</small></div>' + upcoming.map(rowHtml).join('');
+    }
+    if(done.length){
+      html += '<div class="plan-group">Finished today <small>' + done.length + '</small></div>';
+      html += done.map(function(p){
+        return '<div class="plan-row done">'
+          + planPriorityTag(p)
+          + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
+          + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div></div>'
+          + '</div>';
+      }).join('');
+    }
+    wrap.innerHTML = html;
+  }
+
+  function renderPlansPanel(){
+    var wrap = document.getElementById('plans-overview');
+    if(!wrap){ return; }
+    var today = todayStr();
+    var nowMs = Date.now();
+    var relevant = allPlans().filter(function(p){
+      if(p.status === 'todo'){ return true; }
+      if(p.status === 'done'){ return p.doneAt && todayStr(new Date(p.doneAt)) === today; }
+      return p.droppedAt && todayStr(new Date(p.droppedAt)) === today;
+    });
+    if(relevant.length === 0){
+      wrap.innerHTML = '<div class="empty-state">No open plans or tasks right now.</div>';
+      return;
+    }
+    var byEditor = {};
+    relevant.forEach(function(p){
+      if(!byEditor[p.editor]){ byEditor[p.editor] = []; }
+      byEditor[p.editor].push(p);
+    });
+    var rank = { todo: 0, done: 1, dropped: 2 };
+    wrap.innerHTML = Object.keys(byEditor).sort().map(function(name){
+      var items = byEditor[name].sort(function(a, b){
+        if(rank[a.status] !== rank[b.status]){ return rank[a.status] - rank[b.status]; }
+        return sortPlans(a, b);
+      });
+      var counted = items.filter(function(p){ return p.status !== 'dropped'; });
+      var doneCount = counted.filter(function(p){ return p.status === 'done'; }).length;
+      var overdue = counted.filter(function(p){ return planIsOverdue(p, nowMs); }).length;
+      var head = '<div class="plan-group">' + escapeHtml(name)
+        + '<small>' + doneCount + ' of ' + counted.length + ' done' + (overdue ? ' · ' + overdue + ' overdue' : '') + '</small></div>';
+      var rows = items.map(function(p){
+        var live = state.allActiveTakes[name] && state.allActiveTakes[name].planId === p.id
+          ? '<span class="plan-flag ok">● working now</span>' : '';
+        var removable = p.status === 'todo' && p.assignedBy && !live ? dropButtonsHtml(p) : '';
+        return '<div class="plan-row ' + (p.status === 'done' ? 'done' : (p.status === 'dropped' ? 'dropped' : '')) + '">'
+          + planPriorityTag(p)
+          + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
+          + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div></div>'
+          + live + removable
+          + '</div>';
+      }).join('');
+      return head + rows;
+    }).join('');
+  }
+
+  function setPlanButtonsDisabled(disabled){
+    var a = document.getElementById('start-btn');
+    var b = document.getElementById('add-start-btn');
+    if(a){ a.disabled = disabled; }
+    if(b){ b.disabled = disabled; }
+  }
+
+  function resetDueDates(){
+    var today = todayStr();
+    ['f-deadline-date', 'm-date'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){ el.min = today; el.value = today; }
+    });
+  }
+
+  function addPlanItem(startNow){
+    var errEl = document.getElementById('form-error');
+    errEl.textContent = '';
+
     var editor = document.getElementById('f-editor').value.trim();
     var video = document.getElementById('f-video').value.trim();
     var project = document.getElementById('f-project').value;
     var stage = document.getElementById('f-stage').value;
     var notes = document.getElementById('f-notes').value.trim();
-    var errEl = document.getElementById('form-error');
-    errEl.textContent = '';
+    var priority = document.getElementById('f-priority').value;
+    var dueDate = document.getElementById('f-deadline-date').value;
+    var deadline = document.getElementById('f-deadline').value;
 
-    if(!editor || !video){
-      errEl.textContent = 'Editor and video are required.';
-      return;
-    }
-    if(!project || project === '__add_new__'){
-      errEl.textContent = 'Pick a project first.';
-      return;
-    }
-    if(!stage || stage === '__add_new__'){
-      errEl.textContent = 'Pick a stage first.';
+    if(!editor || !video){ errEl.textContent = 'Editor and video are required.'; return; }
+    if(!project || project === '__add_new__'){ errEl.textContent = 'Pick a project first.'; return; }
+    if(!stage || stage === '__add_new__'){ errEl.textContent = 'Pick a stage first.'; return; }
+    if(!dueDate){ errEl.textContent = 'Pick a due date.'; return; }
+    if(dueDate < todayStr()){ errEl.textContent = 'The due date can\'t be in the past.'; return; }
+    if(startNow && state.activeTake){
+      errEl.textContent = 'Finish or hold your current take first — or use "Add to plan" to queue this one.';
       return;
     }
 
-    var take = {
+    var plan = {
+      id: uid(),
+      editor: editor,
+      date: todayStr(),
+      dueDate: dueDate,
       video: video,
       project: project,
       stage: stage,
       notes: notes,
+      priority: priority,
+      deadline: deadline || '',
+      addedMidDay: dueDate === todayStr() && editorHasActivityToday(editor),
+      assignedBy: '',
+      createdAt: new Date().toISOString(),
+      status: 'todo',
+      heldReason: '',
+      doneAt: '',
+      doneDate: '',
+      syncPending: false
+    };
+
+    setPlanButtonsDisabled(true);
+    withRetry(function(){ return savePlanDoc(plan); }).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.plans[plan.id] = plan;
+      document.getElementById('f-video').value = '';
+      document.getElementById('f-notes').value = '';
+      document.getElementById('f-deadline').value = '';
+      document.getElementById('f-priority').value = 'normal';
+      resetDueDates();
+      document.getElementById('lock-warning').style.display = 'none';
+      renderPlanList();
+      if(startNow){ startTakeFromPlan(plan.id); }
+    }).catch(function(err){
+      errEl.textContent = planErrorText(err, 'save this plan item');
+    }).finally(function(){
+      setPlanButtonsDisabled(false);
+    });
+  }
+
+  function fillSimpleSelect(id, list, placeholder){
+    var sel = document.getElementById(id);
+    if(!sel){ return; }
+    var cur = sel.value;
+    sel.innerHTML = (placeholder ? '<option value="">' + escapeHtml(placeholder) + '</option>' : '')
+      + list.map(function(v){ return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+    if(cur && list.indexOf(cur) !== -1){ sel.value = cur; }
+  }
+
+  function populateAssignEditorSelect(){
+    if(!state.credentials){ return; }
+    fillSimpleSelect('m-editor', Object.keys(state.credentials.editors).sort(), 'Select editor…');
+  }
+
+  function assignTask(){
+    var errEl = document.getElementById('assign-error');
+    errEl.textContent = '';
+
+    var editor = document.getElementById('m-editor').value;
+    var video = document.getElementById('m-video').value.trim();
+    var project = document.getElementById('m-project').value;
+    var stage = document.getElementById('m-stage').value;
+    var priority = document.getElementById('m-priority').value;
+    var dueDate = document.getElementById('m-date').value;
+    var deadline = document.getElementById('m-time').value;
+    var notes = document.getElementById('m-notes').value.trim();
+
+    if(!editor){ errEl.textContent = 'Pick an editor.'; return; }
+    if(!video){ errEl.textContent = 'Enter the video / episode.'; return; }
+    if(!project){ errEl.textContent = 'Pick a project.'; return; }
+    if(!stage){ errEl.textContent = 'Pick a stage.'; return; }
+    if(!dueDate){ errEl.textContent = 'Pick a due date.'; return; }
+    if(dueDate < todayStr()){ errEl.textContent = 'The due date can\'t be in the past.'; return; }
+
+    var plan = {
+      id: uid(),
+      editor: editor,
+      date: todayStr(),
+      dueDate: dueDate,
+      video: video,
+      project: project,
+      stage: stage,
+      notes: notes,
+      priority: priority,
+      deadline: deadline || '',
+      addedMidDay: false,
+      assignedBy: MANAGER_NAME,
+      createdAt: new Date().toISOString(),
+      status: 'todo',
+      heldReason: '',
+      doneAt: '',
+      doneDate: '',
+      syncPending: false
+    };
+
+    var btn = document.getElementById('assign-task-btn');
+    btn.disabled = true;
+    withRetry(function(){ return savePlanDoc(plan); }).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.plans[plan.id] = plan;
+      document.getElementById('m-video').value = '';
+      document.getElementById('m-notes').value = '';
+      document.getElementById('m-time').value = '';
+      document.getElementById('m-priority').value = 'normal';
+      resetDueDates();
+      renderPlansPanel();
+      errEl.style.color = 'var(--teal)';
+      errEl.textContent = 'Assigned to ' + editor + '.';
+      setTimeout(function(){ errEl.textContent = ''; errEl.style.color = ''; }, 2500);
+    }).catch(function(err){
+      errEl.style.color = '';
+      errEl.textContent = planErrorText(err, 'assign this task');
+    }).finally(function(){
+      btn.disabled = false;
+    });
+  }
+
+  function startTakeFromPlan(planId){
+    var errEl = document.getElementById('plan-error');
+    errEl.textContent = '';
+    var plan = state.plans[planId];
+    if(!plan){ return; }
+    if(!state.takesLoaded){ errEl.textContent = 'Still loading — try again in a second.'; return; }
+    if(state.activeTake){
+      errEl.textContent = 'Finish or hold your current take before starting another one.';
+      return;
+    }
+
+    var editor = state.identity.name;
+    var take = {
+      video: plan.video,
+      project: plan.project,
+      stage: plan.stage,
+      notes: plan.notes || '',
       startedAt: new Date().toISOString(),
       paused: false,
       pausedAt: null,
       pauseReason: '',
       pauseLog: [],
-      planId: state.pendingPlanId || matchPlanId(video, stage)
+      planId: plan.id,
+      resumedFromHold: !!plan.heldReason
     };
-    state.pendingPlanId = null;
-
-    var btn = document.getElementById('start-btn');
-    btn.disabled = true;
 
     withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
       if(res && res.error){ throw new Error(res.error); }
@@ -1776,15 +2285,33 @@
       state.activeTake = take;
 
       var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
-      setLock(video, lockData).then(function(){ state.locks[video] = lockData; });
+      setLock(plan.video, lockData).then(function(){ state.locks[plan.video] = lockData; });
+
+      var startPatch = { sheetStatus: 'In progress', syncPending: true, updatedAt: new Date().toISOString(), updatedBy: 'app' };
+      patchPlanDoc(plan.id, startPatch).then(function(){ Object.assign(plan, startPatch); });
 
       document.getElementById('lock-warning').style.display = 'none';
-      if(take.planId){ setPlanStatus(take.planId, 'doing'); }
       enterActiveTakeUI();
-    }).catch(function(){
-      errEl.textContent = "Couldn't start — check your connection and try again.";
-    }).finally(function(){
-      btn.disabled = false;
+    }).catch(function(err){
+      errEl.textContent = planErrorText(err, 'start this take');
+    });
+  }
+
+  function askDropPlan(planId){
+    state.confirmDropPlan = planId;
+    renderPlanList();
+    renderPlansPanel();
+  }
+
+  function performDropPlan(planId){
+    state.confirmDropPlan = null;
+    var patch = { status: 'dropped', droppedAt: new Date().toISOString(), droppedDate: todayStr() };
+    withRetry(function(){ return patchPlanDoc(planId, patch); }).then(function(res){
+      var errEl = document.getElementById('plan-error');
+      if(res && res.error){ errEl.textContent = planErrorText(res.error, 'remove this item'); return; }
+      if(state.plans[planId]){ Object.assign(state.plans[planId], patch); }
+      renderPlanList();
+      renderPlansPanel();
     });
   }
 
@@ -1821,26 +2348,61 @@
       pauses: pauseLog,
       held: false,
       holdReason: '',
-      planId: take.planId || null
+      planId: take.planId || '',
+      outcome: 'finished',
+      outcomeNote: '',
+      month: todayStr(new Date(startedMs)).slice(0, 7)
     };
     if(extraFields){ Object.assign(entry, extraFields); }
 
     return db.collection('entries').doc(entry.id).set(entry)
-      .then(function(){ return withRetry(function(){ return clearActiveTakeDoc(editor); }); })
+      .then(function(){
+        // keeps a tiny list of every video name so the manager's lookup never has to scan history
+        db.collection('config').doc('videoIndex')
+          .set({ list: firebase.firestore.FieldValue.arrayUnion(entry.video) }, { merge: true })
+          .catch(function(){});
+        return withRetry(function(){ return clearActiveTakeDoc(editor); });
+      })
       .then(function(res){
         if(res && res.error){ throw new Error(res.error); }
         delete state.allActiveTakes[editor];
-        var isFinalStage = state.stages.length > 0 && entry.stage === state.stages[state.stages.length - 1];
-        if(isFinalStage){
-          return withRetry(function(){ return clearLock(entry.video); }).then(function(res2){
-            if(res2 && res2.error){ throw new Error(res2.error); }
-            delete state.locks[entry.video];
+        var planStep = Promise.resolve();
+        if(take.planId){
+          // Ending a planned take finishes that plan item; holding it parks the item
+          // (with the reason) so it stays on the editor's list to pick up later.
+          var closes = entry.outcome === 'finished' || entry.outcome === 'ready_to_upload';
+          var prevHours = (state.plans[take.planId] && state.plans[take.planId].hoursLogged) || 0;
+          var patch = {
+            status: closes ? 'done' : 'todo',
+            doneAt: closes ? entry.loggedAt : '',
+            doneDate: closes ? todayStr() : '',
+            syncPending: true,
+            heldReason: entry.outcome === 'resume_later' ? (entry.outcomeNote || 'Resume later') : '',
+            sheetStatus: OUTCOME_SHEET_STATUS[entry.outcome] || 'In progress',
+            outcomeNote: entry.outcomeNote || '',
+            hoursLogged: Math.round((prevHours + entry.hours) * 1000) / 1000,
+            updatedAt: new Date().toISOString(),
+            updatedBy: 'app'
+          };
+          if(closes){ patch.needsEditing = false; }
+          planStep = withRetry(function(){ return patchPlanDoc(take.planId, patch); }).then(function(resP){
+            if(resP && resP.error){ throw new Error(resP.error); }
+            if(state.plans[take.planId]){ Object.assign(state.plans[take.planId], patch); }
           });
         }
-        var lockData = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
-        return withRetry(function(){ return setLock(entry.video, lockData); }).then(function(res3){
-          if(res3 && res3.error){ throw new Error(res3.error); }
-          state.locks[entry.video] = lockData;
+        return planStep.then(function(){
+          var isFinalStage = state.stages.length > 0 && entry.stage === state.stages[state.stages.length - 1];
+          if(isFinalStage){
+            return withRetry(function(){ return clearLock(entry.video); }).then(function(res2){
+              if(res2 && res2.error){ throw new Error(res2.error); }
+              delete state.locks[entry.video];
+            });
+          }
+          var lockData = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
+          return withRetry(function(){ return setLock(entry.video, lockData); }).then(function(res3){
+            if(res3 && res3.error){ throw new Error(res3.error); }
+            state.locks[entry.video] = lockData;
+          });
         });
       })
       .then(function(){
@@ -1852,74 +2414,79 @@
       .catch(function(err){ return { error: String(err), entry: entry }; });
   }
 
+  var OUTCOME_SHEET_STATUS = {
+    finished: 'Done',
+    ready_to_upload: 'Ready to upload',
+    in_progress: 'In progress',
+    resume_later: 'Resume later',
+    other: 'Other'
+  };
+
+  function updateEndPromptLabels(){
+    var outcome = document.getElementById('end-outcome').value;
+    var label = document.getElementById('end-note-label');
+    var input = document.getElementById('end-note');
+    if(outcome === 'resume_later'){
+      label.textContent = 'Why are you pausing it? (optional)';
+      input.placeholder = 'e.g. waiting on VO files, client feedback needed';
+    } else if(outcome === 'other'){
+      label.textContent = 'What happened? (required)';
+      input.placeholder = 'Describe the status in a few words';
+    } else {
+      label.textContent = 'Note (optional)';
+      input.placeholder = 'Anything the team should know?';
+    }
+  }
+
+  // Clicking "End Take" now asks how the take ended before anything is saved.
   function endTake(){
     if(!state.activeTake) return;
-    var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
-    var take = state.activeTake;
-    var notes = document.getElementById('f-notes-active').value.trim();
-    var pauseReasonInput = document.getElementById('pause-reason-input');
-    var pauseReason = pauseReasonInput ? pauseReasonInput.value.trim() : null;
-    var errEl = document.getElementById('end-error');
-    errEl.textContent = '';
-
-    var btn = document.getElementById('end-btn');
-    btn.disabled = true;
-
-    finalizeTake(editor, take, notes, pauseReason).then(function(res){
-      if(res && res.error){ throw new Error(res.error); }
-      state.activeTake = null;
-      if(take.planId){ state.finishPromptPlanId = take.planId; renderPlan(); }
-
-      document.getElementById('f-video').value = '';
-      document.getElementById('f-notes').value = '';
-      document.getElementById('f-notes-active').value = '';
-      refreshDatalists();
-      renderFeed();
-      if(state.activeTab === 'dashboard') renderDashboard();
-      exitActiveTakeUI();
-    }).catch(function(){
-      errEl.textContent = "Couldn't save — check your connection and try again.";
-    }).finally(function(){
-      btn.disabled = false;
-    });
-  }
-
-  function showHoldPrompt(){
-    document.getElementById('hold-prompt').style.display = 'block';
+    document.getElementById('end-error').textContent = '';
+    document.getElementById('end-outcome').value = 'finished';
+    document.getElementById('end-note').value = '';
+    updateEndPromptLabels();
+    document.getElementById('end-prompt').style.display = 'block';
     document.getElementById('active-take-buttons').style.display = 'none';
-    var input = document.getElementById('hold-reason-input');
-    input.value = '';
-    input.focus();
+    document.getElementById('end-note').focus();
   }
 
-  function hideHoldPrompt(){
-    document.getElementById('hold-prompt').style.display = 'none';
+  function hideEndPrompt(){
+    document.getElementById('end-prompt').style.display = 'none';
     document.getElementById('active-take-buttons').style.display = 'flex';
   }
 
-  function holdTake(){
+  function submitEndTake(){
     if(!state.activeTake) return;
     var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
     var take = state.activeTake;
     var notes = document.getElementById('f-notes-active').value.trim();
     var pauseReasonInput = document.getElementById('pause-reason-input');
     var pauseReason = pauseReasonInput ? pauseReasonInput.value.trim() : null;
-    var holdReason = document.getElementById('hold-reason-input').value.trim();
+    var outcome = document.getElementById('end-outcome').value;
+    var outcomeNote = document.getElementById('end-note').value.trim();
     var errEl = document.getElementById('end-error');
     errEl.textContent = '';
 
-    var btn = document.getElementById('confirm-hold-btn');
+    if(outcome === 'other' && !outcomeNote){
+      errEl.textContent = 'Add a short note describing the status.';
+      document.getElementById('end-note').focus();
+      return;
+    }
+
+    var extra = { outcome: outcome, outcomeNote: outcomeNote };
+    if(outcome === 'resume_later'){ extra.held = true; extra.holdReason = outcomeNote; }
+
+    var btn = document.getElementById('confirm-end-btn');
     btn.disabled = true;
 
-    finalizeTake(editor, take, notes, pauseReason, { held: true, holdReason: holdReason }).then(function(res){
+    finalizeTake(editor, take, notes, pauseReason, extra).then(function(res){
       if(res && res.error){ throw new Error(res.error); }
       state.activeTake = null;
-      if(take.planId){ setPlanStatus(take.planId, 'held', { holdReason: holdReason }); }
 
       document.getElementById('f-video').value = '';
       document.getElementById('f-notes').value = '';
       document.getElementById('f-notes-active').value = '';
-      hideHoldPrompt();
+      hideEndPrompt();
       refreshDatalists();
       renderFeed();
       if(state.activeTab === 'dashboard') renderDashboard();
@@ -1940,7 +2507,7 @@
       }
     });
     return Object.keys(byVideo).map(function(v){ return byVideo[v]; })
-      .filter(function(e){ return e.held; })
+      .filter(function(e){ return e.held && !e.planId; })
       .sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
   }
 
@@ -1988,8 +2555,7 @@
       pausedAt: null,
       pauseReason: '',
       pauseLog: [],
-      resumedFromHold: true,
-      planId: matchPlanId(video, stage)
+      resumedFromHold: true
     };
 
     withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
@@ -2000,183 +2566,12 @@
       state.allActiveTakes[editor] = take;
       state.activeTake = take;
       document.getElementById('lock-warning').style.display = 'none';
-      if(take.planId){ setPlanStatus(take.planId, 'doing'); }
 
       var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
       withRetry(function(){ return setLock(video, lockData); }).then(function(){ state.locks[video] = lockData; });
 
       enterActiveTakeUI();
     });
-  }
-
-  /* ---------- today's plan ----------
-     plans/{id}: editor, video, project, stage, priority (high|normal|low), deadline (YYYY-MM-DD),
-     deadlineTime (HH:MM or ''), planDate (day it was added), createdAt, midDay (added after the
-     editor's first take that day), status (todo|doing|held|done), doneAt, startedAt */
-  var PRIO_RANK = { high: 0, normal: 1, low: 2 };
-  var STATUS_RANK = { doing: 0, held: 2, todo: 1, done: 3 };
-
-  function watchPlans(editorName){
-    return db.collection('plans').where('editor', '==', editorName).onSnapshot(function(snap){
-      var arr = [];
-      snap.forEach(function(doc){ var d = doc.data(); d.id = doc.id; arr.push(d); });
-      state.plans = arr;
-      renderPlan();
-    }, function(){});
-  }
-
-  function matchPlanId(video, stage){
-    var v = String(video || '').trim().toLowerCase();
-    var p = state.plans.filter(function(x){ return x.status !== 'done' && String(x.video).trim().toLowerCase() === v && (!stage || x.stage === stage); })[0];
-    return p ? p.id : null;
-  }
-
-  function dueInfo(p){
-    var t = todayStr(new Date());
-    if(!p.deadline) return { cls: '', label: 'No deadline', late: false };
-    var d0 = new Date(t + 'T00:00:00'), d1 = new Date(p.deadline + 'T00:00:00');
-    var days = Math.round((d1 - d0) / 86400000);
-    var time = p.deadlineTime ? ' ' + p.deadlineTime : '';
-    var lateToday = days === 0 && p.deadlineTime && (pad(new Date().getHours()) + ':' + pad(new Date().getMinutes())) > p.deadlineTime;
-    if(p.status !== 'done' && (days < 0 || lateToday)) return { cls: 'late', label: days < 0 ? ('Overdue ' + (-days) + 'd') : ('Overdue · was due ' + p.deadlineTime), late: true };
-    if(days === 0) return { cls: 'today', label: 'Due today' + time, late: false };
-    if(days === 1) return { cls: '', label: 'Due tomorrow' + time, late: false };
-    return { cls: '', label: 'Due ' + formatDateLabel(p.deadline) + time, late: false };
-  }
-
-  function sortedPlans(){
-    return state.plans.slice().sort(function(a, b){
-      return (STATUS_RANK[a.status] - STATUS_RANK[b.status])
-        || ((PRIO_RANK[a.priority] || 1) - (PRIO_RANK[b.priority] || 1))
-        || String(a.deadline || '9999').localeCompare(String(b.deadline || '9999'))
-        || String(a.deadlineTime || '99').localeCompare(String(b.deadlineTime || '99'));
-    });
-  }
-
-  function renderPlan(){
-    var card = document.getElementById('plan-card');
-    if(!card || !state.identity || state.identity.role !== 'editor') return;
-    card.style.display = 'block';
-    var t = todayStr(new Date());
-    // Today's plan = everything not done, plus items finished today.
-    var items = sortedPlans().filter(function(p){ return p.status !== 'done' || (p.doneAt || '').slice(0, 10) === t; });
-    var open = items.filter(function(p){ return p.status !== 'done'; });
-    var doneToday = items.filter(function(p){ return p.status === 'done'; });
-    var late = open.filter(function(p){ return dueInfo(p).late; }).length;
-    document.getElementById('plan-count').textContent = open.length ? ('· ' + open.length + ' open' + (doneToday.length ? ', ' + doneToday.length + ' done today' : '') + (late ? ', ' + late + ' overdue' : '')) : (doneToday.length ? '· all ' + doneToday.length + ' done today' : '');
-    var list = document.getElementById('plan-list');
-    var shown = state.showDonePlans ? items : open;
-    if(!items.length){
-      list.innerHTML = '<div class="empty-state">No episodes planned yet. Tap “+ Add episode” to plan your day — add each episode with its deadline and priority.</div>';
-    } else {
-      list.innerHTML = shown.map(function(p){
-        var due = dueInfo(p);
-        var tags = '';
-        if(p.revisionOf) tags += '<span class="plan-tag edits ' + (p.fault === 'editor' ? 'fix' : 'change') + '">' + (p.fault === 'editor' ? 'Fix' : 'Changes') + ' · round ' + escapeHtml(String(p.round || 1)) + '</span>';
-        if(p.midDay) tags += '<span class="plan-tag mid">Added mid-day</span>';
-        if(p.planDate && p.planDate < t && p.status !== 'done') tags += '<span class="plan-tag carry">Carried over</span>';
-        if(p.status === 'held') tags += '<span class="plan-tag held" title="' + escapeHtml(p.holdReason || '') + '">On hold</span>';
-        if(p.status === 'doing') tags += '<span class="plan-tag">In progress</span>';
-        var busy = !!state.activeTake;
-        var actions = p.status === 'done'
-          ? '<button type="button" class="switch-link" style="color:var(--navy-soft)" data-plan-undo="' + escapeHtml(p.id) + '">undo</button>'
-          : (state.activeTake && state.activeTake.planId === p.id
-              ? '<span class="plan-tag">Timer running</span>'
-              : '<button type="button" class="plan-btn start" data-plan-start="' + escapeHtml(p.id) + '"' + (busy ? ' disabled title="Finish or hold your current take first"' : '') + '>▶ Start</button>')
-            + '<button type="button" class="plan-btn done" data-plan-done="' + escapeHtml(p.id) + '" title="This stage is finished">✓ Done</button>'
-            + (p.revisionOf ? '' : '<button type="button" class="plan-x" data-plan-del="' + escapeHtml(p.id) + '" title="Remove from plan" aria-label="Remove">✕</button>');
-        return '<div class="plan-item ' + (p.status === 'done' ? 'done' : p.status === 'doing' ? 'doing' : '') + (due.late ? ' late' : '') + '">'
-          + '<span class="plan-prio ' + escapeHtml(p.priority || 'normal') + '">' + escapeHtml(p.priority || 'normal') + '</span>'
-          + '<div class="plan-main"><div class="plan-video" dir="auto">' + escapeHtml(p.video) + '</div>'
-          + '<div class="plan-meta"><span>' + escapeHtml(p.project || '') + ' · ' + escapeHtml(p.stage || '') + '</span><span class="plan-due ' + due.cls + '">' + escapeHtml(due.label) + '</span>' + tags + '</div>'
-          + (p.revisionOf && (p.editReason || p.editNote) ? '<div class="plan-note" dir="auto">' + escapeHtml(p.editReason || '') + (p.editNote ? ' — ' + escapeHtml(p.editNote) : '') + '</div>' : '')
-          + '</div>'
-          + '<div class="plan-actions">' + actions + '</div></div>';
-      }).join('') + (doneToday.length ? '<button type="button" class="plan-done-toggle" id="plan-done-toggle">' + (state.showDonePlans ? 'Hide' : 'Show') + ' ' + doneToday.length + ' finished today</button>' : '');
-    }
-    var fp = document.getElementById('finish-prompt-wrap');
-    var fpItem = state.finishPromptPlanId && state.plans.filter(function(p){ return p.id === state.finishPromptPlanId && p.status !== 'done'; })[0];
-    fp.innerHTML = fpItem ? '<div class="finish-prompt"><span>Did you finish <b>' + escapeHtml(fpItem.stage) + '</b> on <b>' + escapeHtml(fpItem.video) + '</b>?</span>'
-      + '<button type="button" class="plan-btn done" data-plan-done="' + escapeHtml(fpItem.id) + '">✓ Yes, mark done</button>'
-      + '<button type="button" class="plan-btn" data-plan-later="1">Not yet</button></div>' : '';
-    // keep the Start-a-take button state in step with plans
-    document.querySelectorAll('[data-plan-start]').forEach(function(b){ b.disabled = !!state.activeTake; });
-  }
-
-  function populatePlanSelects(){
-    var ps = document.getElementById('p-project'), ss = document.getElementById('p-stage');
-    var cp = ps.value, cs = ss.value;
-    ps.innerHTML = state.projects.map(function(p){ return '<option>' + escapeHtml(p) + '</option>'; }).join('');
-    ss.innerHTML = state.stages.map(function(s){ return '<option>' + escapeHtml(s) + '</option>'; }).join('');
-    if(cp && state.projects.indexOf(cp) >= 0) ps.value = cp;
-    if(cs && state.stages.indexOf(cs) >= 0) ss.value = cs;
-  }
-
-  function openPlanForm(){
-    populatePlanSelects();
-    var f = document.getElementById('plan-form');
-    f.style.display = 'block';
-    if(!document.getElementById('p-deadline').value){ document.getElementById('p-deadline').value = todayStr(new Date()); }
-    document.getElementById('plan-form-msg').textContent = '';
-    document.getElementById('p-video').focus();
-  }
-
-  function addPlanItem(){
-    var video = document.getElementById('p-video').value.trim();
-    var project = document.getElementById('p-project').value;
-    var stage = document.getElementById('p-stage').value;
-    var deadline = document.getElementById('p-deadline').value;
-    var time = document.getElementById('p-time').value;
-    var prioEl = document.querySelector('input[name="p-prio"]:checked');
-    var msg = document.getElementById('plan-form-msg');
-    if(!video || !deadline){ msg.textContent = 'Episode and deadline are required.'; return; }
-    var editor = state.identity.name;
-    var t = todayStr(new Date());
-    var startedToday = state.entries.some(function(e){ return e.editor === editor && e.date === t; }) || !!state.activeTake;
-    var dup = state.plans.filter(function(p){ return p.status !== 'done' && p.video.trim().toLowerCase() === video.toLowerCase() && p.stage === stage; })[0];
-    if(dup){ msg.textContent = 'This episode and stage is already in your plan.'; return; }
-    var item = {
-      editor: editor, video: video, project: project, stage: stage,
-      priority: prioEl ? prioEl.value : 'normal', deadline: deadline, deadlineTime: time || '',
-      planDate: t, createdAt: new Date().toISOString(), midDay: startedToday,
-      status: 'todo', doneAt: null, startedAt: null
-    };
-    var btn = document.getElementById('plan-save-btn');
-    btn.disabled = true;
-    var id = uid();
-    withRetry(function(){ return db.collection('plans').doc(id).set(item).then(function(){ return { ok: true }; }).catch(function(err){ return { error: String(err) }; }); }).then(function(res){
-      if(res && res.error){ msg.textContent = "Couldn't add — check your connection."; return; }
-      document.getElementById('p-video').value = '';
-      document.getElementById('p-time').value = '';
-      var np = document.querySelector('input[name="p-prio"][value="normal"]'); if(np) np.checked = true;
-      msg.textContent = 'Added ' + video + '. Add another or close.';
-      document.getElementById('p-video').focus();
-    }).finally(function(){ btn.disabled = false; });
-  }
-
-  function setPlanStatus(id, status, extra){
-    var data = { status: status };
-    if(status === 'done') data.doneAt = new Date().toISOString();
-    if(status === 'doing') data.startedAt = new Date().toISOString();
-    if(status === 'todo') data.doneAt = null;
-    if(extra) Object.assign(data, extra);
-    state.plans.forEach(function(p){ if(p.id === id) Object.assign(p, data); });
-    if(state.finishPromptPlanId === id && status === 'done') state.finishPromptPlanId = null;
-    renderPlan();
-    return db.collection('plans').doc(id).set(data, { merge: true }).catch(function(){});
-  }
-
-  function startFromPlan(id){
-    var p = state.plans.filter(function(x){ return x.id === id; })[0];
-    if(!p || state.activeTake) return;
-    populateProjectSelect(p.project);
-    populateStageSelect(p.stage);
-    document.getElementById('f-video').value = p.video;
-    document.getElementById('f-project').value = p.project;
-    document.getElementById('f-stage').value = p.stage;
-    state.pendingPlanId = id;
-    state.finishPromptPlanId = null;
-    startTake();
   }
 
   function monthBoundsForOffset(offset){
@@ -2196,6 +2591,32 @@
     var bounds = monthBoundsForOffset(state.myHistoryMonthOffset);
     document.getElementById('my-history-month-label').textContent = bounds.label;
     document.getElementById('my-history-next').disabled = state.myHistoryMonthOffset >= 0;
+
+    var monthKey = bounds.start.slice(0, 7);
+    if(monthKey !== todayStr().slice(0, 7)){
+      var cacheKey = 'm|' + state.identity.name + '|' + monthKey;
+      if(!state.entryParts.extra[cacheKey]){
+        wrap.innerHTML = '<div class="empty-state">Loading…</div>';
+        document.getElementById('my-history-summary').textContent = '';
+        if(!state.monthFetching[cacheKey]){
+          state.monthFetching[cacheKey] = true;
+          db.collection('entries').where('editor', '==', state.identity.name).where('month', '==', monthKey).get()
+            .then(function(snap){
+              var arr = [];
+              snap.forEach(function(d){ arr.push(d.data()); });
+              state.entryParts.extra[cacheKey] = arr;
+              rebuildEntries();
+              delete state.monthFetching[cacheKey];
+              renderMyHistory();
+            }).catch(function(err){
+              delete state.monthFetching[cacheKey];
+              wrap.innerHTML = '<div class="empty-state">Couldn\'t load this month — try again.</div>';
+              showDbNotice(err);
+            });
+        }
+        return;
+      }
+    }
 
     var rows = state.entries.filter(function(e){
       return e.editor === state.identity.name && e.date >= bounds.start && e.date < bounds.end;
@@ -2233,7 +2654,7 @@
     var take = state.allActiveTakes[editorName];
     state.confirmForceEnd = null;
     if(!take){ renderActiveTakesPanel(); return; }
-    finalizeTake(editorName, take).then(function(res){
+    finalizeTake(editorName, take, null, null, { outcome: 'in_progress', outcomeNote: 'Ended by manager' }).then(function(res){
       if(res && res.error){ window.alert("Couldn't end that take — try again."); return; }
       renderActiveTakesPanel();
     });
@@ -2339,38 +2760,23 @@
     var endBtn = e.target.closest('#end-btn');
     if(endBtn){ endTake(); return; }
 
+    if(e.target.closest('#add-start-btn')){ addPlanItem(true); return; }
+    if(e.target.closest('#assign-task-btn')){ assignTask(); return; }
+    var startPlanBtn = e.target.closest('[data-start-plan]');
+    if(startPlanBtn){ startTakeFromPlan(startPlanBtn.getAttribute('data-start-plan')); return; }
+    var askDropBtn = e.target.closest('[data-ask-drop-plan]');
+    if(askDropBtn){ askDropPlan(askDropBtn.getAttribute('data-ask-drop-plan')); return; }
+    var confirmDropBtn = e.target.closest('[data-confirm-drop-plan]');
+    if(confirmDropBtn){ performDropPlan(confirmDropBtn.getAttribute('data-confirm-drop-plan')); return; }
+
     var pauseBtn = e.target.closest('#pause-btn');
     if(pauseBtn){ pauseTake(); return; }
 
     var resumeBtn = e.target.closest('#resume-btn');
     if(resumeBtn){ resumeTake(); return; }
 
-    var holdBtn = e.target.closest('#hold-btn');
-    if(holdBtn){ showHoldPrompt(); return; }
-    var cancelHoldBtn = e.target.closest('#cancel-hold-btn');
-    if(cancelHoldBtn){ hideHoldPrompt(); return; }
-    var confirmHoldBtn = e.target.closest('#confirm-hold-btn');
-    if(confirmHoldBtn){ holdTake(); return; }
-
-    var planStart = e.target.closest('[data-plan-start]');
-    if(planStart){ startFromPlan(planStart.getAttribute('data-plan-start')); return; }
-    var planDone = e.target.closest('[data-plan-done]');
-    if(planDone){ setPlanStatus(planDone.getAttribute('data-plan-done'), 'done'); return; }
-    var planUndo = e.target.closest('[data-plan-undo]');
-    if(planUndo){ setPlanStatus(planUndo.getAttribute('data-plan-undo'), 'todo'); return; }
-    var planLater = e.target.closest('[data-plan-later]');
-    if(planLater){ state.finishPromptPlanId = null; renderPlan(); return; }
-    var planDel = e.target.closest('[data-plan-del]');
-    if(planDel){
-      var pid = planDel.getAttribute('data-plan-del');
-      if(planDel.getAttribute('data-confirm') === '1'){ db.collection('plans').doc(pid).delete().catch(function(){}); return; }
-      planDel.setAttribute('data-confirm', '1'); planDel.textContent = 'Remove?'; planDel.style.fontSize = '12px'; planDel.style.color = 'var(--red)';
-      setTimeout(function(){ if(planDel.isConnected){ planDel.removeAttribute('data-confirm'); planDel.textContent = '✕'; planDel.style.fontSize = ''; planDel.style.color = ''; } }, 4000);
-      return;
-    }
-    if(e.target.closest('#plan-add-toggle')){ openPlanForm(); return; }
-    if(e.target.closest('#plan-cancel-btn')){ document.getElementById('plan-form').style.display = 'none'; return; }
-    if(e.target.closest('#plan-done-toggle')){ state.showDonePlans = !state.showDonePlans; renderPlan(); return; }
+    if(e.target.closest('#cancel-end-btn')){ hideEndPrompt(); return; }
+    if(e.target.closest('#confirm-end-btn')){ submitEndTake(); return; }
 
     var resumeHeldBtn = e.target.closest('[data-resume-held]');
     if(resumeHeldBtn){
@@ -2463,11 +2869,7 @@
   document.addEventListener('submit', function(e){
     if(e.target && e.target.id === 'log-form'){
       e.preventDefault();
-      startTake();
-    }
-    if(e.target && e.target.id === 'plan-form'){
-      e.preventDefault();
-      addPlanItem();
+      addPlanItem(false);
     }
   });
 
@@ -2488,8 +2890,11 @@
         document.getElementById('add-stage-row').style.display = 'none';
       }
     }
+    if(e.target && e.target.id === 'end-outcome'){
+      updateEndPromptLabels();
+    }
     if(e.target && e.target.id === 'dash-video-select'){
-      renderVideoDetail(e.target.value);
+      lookUpVideo(e.target.value);
     }
     if(e.target && e.target.id === 'dash-editor-select'){
       renderEditorDetail(e.target.value);
@@ -2545,24 +2950,25 @@
     setInterval(tickClock, 30000);
     setInterval(tickActiveTakesPanel, 1000);
 
+    resetDueDates();
     renderEditorManageList();
+    renderPlanList();
+    renderPlansPanel();
 
     loadProjects().then(function(projects){
       state.projects = projects;
       populateProjectSelect();
-      populatePlanSelects();
     });
-    if(state.identity.role === 'editor'){ watchPlans(state.identity.name); setInterval(renderPlan, 60000); }
 
     loadStages().then(function(stages){
       state.stages = stages;
       populateStageSelect();
-      populatePlanSelects();
       renderStageManageList();
     });
 
-    watchEntries(function(entries){
-      state.entries = entries;
+    function onEntries(entries){
+      state.entryParts.live = entries;
+      rebuildEntries();
       state.loading = false;
       refreshDatalists();
       renderFeed();
@@ -2577,16 +2983,47 @@
         if(vsel && vsel.value){ renderVideoDetail(vsel.value); }
         var esel = document.getElementById('dash-editor-select');
         if(esel && esel.value){ renderEditorDetail(esel.value); }
+        backfillMissingMonths(entries);
+      }
+    }
+
+    // entries logged by an out-of-date copy of the app have no `month` yet: fix them up
+    function backfillMissingMonths(entries){
+      if(state.backfilledOnce){ return; }
+      var missing = entries.filter(function(e){ return !e.month && e.date; });
+      if(!missing.length){ return; }
+      state.backfilledOnce = true;
+      var batch = db.batch();
+      missing.slice(0, 400).forEach(function(e){
+        batch.set(db.collection('entries').doc(e.id), { month: e.date.slice(0, 7) }, { merge: true });
+      });
+      batch.commit().catch(function(){});
+    }
+
+    var entryOpts = state.identity.role === 'editor'
+      ? { editor: state.identity.name, month: todayStr().slice(0, 7) }
+      : { since: entryWindowStart() };
+    migrateEntryMonths(state.identity.role, state.identity.name).then(function(){
+      watchEntries(onEntries, entryOpts);
+      if(state.identity.role === 'manager'){
+        // read after the one-time tidy-up so a first-ever load sees the freshly built index
+        db.collection('config').doc('videoIndex').get().then(function(doc){
+          state.videoIndex = (doc.exists && doc.data().list) || [];
+          populateDashVideoSelect();
+        }).catch(function(){});
       }
     });
 
-    watchCollection('locks', function(locks){
+    // only locks touched in the last few hours matter (older ones are ignored anyway)
+    var lockCutoff = new Date(Date.now() - LOCK_TTL_MS).toISOString();
+    watchQueryMap(db.collection('locks').where('lastActiveAt', '>=', lockCutoff), function(locks){
       state.locks = locks;
       checkVideoLock();
     });
 
     watchCollection('activeTakes', function(activeTakes){
       state.allActiveTakes = activeTakes;
+      state.takesLoaded = true;
 
       if(state.identity.role === 'editor'){
         var mine = activeTakes[state.identity.name];
@@ -2607,20 +3044,50 @@
         } else if(!mine && wasActive){
           state.activeTake = null;
           exitActiveTakeUI();
-        } else {
-          var startBtn = document.getElementById('start-btn');
-          if(startBtn && startBtn.disabled){
-            startBtn.disabled = false;
-            startBtn.textContent = 'Start Take ▸';
-          }
         }
       }
 
       if(state.activeTab === 'dashboard'){
         renderActiveTakesPanel();
+        renderPlansPanel();
+      } else {
+        renderPlanList();
       }
-      renderPlan();
     });
+
+    // Plans are loaded as small, separate queries (open items, plus today's finished /
+    // removed ones) instead of the whole history, and merged into state.plans.
+    var planDay = todayStr();
+    state.planParts = {};
+    function setPlanPart(name, map){
+      state.planParts[name] = map;
+      var merged = {};
+      ['open', 'doneToday', 'droppedToday'].forEach(function(k){
+        if(state.planParts[k]){ Object.assign(merged, state.planParts[k]); }
+      });
+      state.plans = merged;
+      if(state.activeTab === 'dashboard'){
+        renderPlansPanel();
+      } else {
+        renderPlanList();
+        refreshDatalists();
+      }
+    }
+    var plansCol = db.collection('plans');
+    if(state.identity.role === 'editor'){
+      var meName = state.identity.name;
+      watchQueryMap(plansCol.where('editor', '==', meName).where('status', '==', 'todo'), function(m){ setPlanPart('open', m); });
+      watchQueryMap(plansCol.where('editor', '==', meName).where('doneDate', '==', planDay), function(m){ setPlanPart('doneToday', m); });
+    } else {
+      watchQueryMap(plansCol.where('status', '==', 'todo'), function(m){ setPlanPart('open', m); });
+      watchQueryMap(plansCol.where('doneDate', '==', planDay), function(m){ setPlanPart('doneToday', m); });
+      watchQueryMap(plansCol.where('droppedDate', '==', planDay), function(m){ setPlanPart('droppedToday', m); });
+    }
+
+    // keep "overdue" flags fresh without needing any other activity
+    setInterval(function(){
+      if(state.activeTab === 'dashboard'){ renderPlansPanel(); } else { renderPlanList(); }
+    }, 60000);
   }
 
   /* ---------- init ---------- */
