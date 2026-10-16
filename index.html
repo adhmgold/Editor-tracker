@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#332FD1">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
@@ -639,6 +640,7 @@
         <button type="button" class="btn-primary btn-small" id="add-editor-confirm">Add</button>
       </div>
       <div class="form-error" id="editor-manage-error"></div>
+      <div class="editor-row-sub" id="sync-key-row" style="margin-top:8px;"></div>
       <div class="editor-row-sub" style="margin-top:2px;">Removing an editor only affects who can log in — their past entries stay in every report. Renaming moves their past takes, tasks and login to the new name; the password stays the same.</div>
     </div>
 
@@ -691,20 +693,9 @@
 
   var LOCK_TTL_MS = 3 * 60 * 60 * 1000; // a lock goes stale after 3 hours of inactivity
   var MANAGER_NAME = 'Adhmgold';
-  var DEFAULT_CREDENTIALS = {
-    managerCode: '234623',
-    editors: {
-      'Saqr': '1024',
-      'Elmasry': '2158',
-      'Amr Annan': '3379',
-      'Rana': '4482',
-      'Ezz': '5510',
-      'Youssef': '6643',
-      'Ziad': '7726',
-      'Anas': '8814',
-      'Maaty': '9931'
-    }
-  }; // local fallback only — Firestore seeds itself with these on first run
+  // Passwords are no longer kept in this page or in a readable database document:
+  // they live in secrets/access, which only the manager's signed-in session can read.
+  var DEFAULT_CREDENTIALS = { managerCode: '', editors: {} }; // local fallback only — Firestore seeds itself with these on first run
 
   var state = { entries: [], loading: true, activeTab: 'log', period: 'today', identity: null, expandedEditors: new Set(), credentials: null, locks: {}, projects: [], stages: [], confirmDeleteStage: null, confirmDeleteEditor: null, resettingEditor: null, confirmForceEnd: null, plans: {}, confirmDropPlan: null, takesLoaded: false, entryParts: { live: [], extra: {} }, monthFetching: {}, videoIndex: [], activeTake: null, allActiveTakes: {}, timerInterval: null, myHistoryMonthOffset: 0 };
 
@@ -873,6 +864,7 @@
     }
   } catch(e){ firebaseReady = false; }
   var db = firebaseReady ? firebase.firestore() : null;
+  var auth = firebaseReady && firebase.auth ? firebase.auth() : null;
 
   // Retries a {ok:true}/{error:...}-returning write a few times with backoff,
   // for operations where a silent failure would leave the UI out of sync with
@@ -1097,17 +1089,104 @@
     return Promise.resolve();
   }
 
-  function loadCredentials(){
-    return db.collection('config').doc('credentials').get().then(function(doc){
-      if(doc.exists && doc.data().editors && doc.data().managerCode){ return doc.data(); }
-      return db.collection('config').doc('credentials').set(DEFAULT_CREDENTIALS).then(function(){ return DEFAULT_CREDENTIALS; });
-    }).catch(function(){ return DEFAULT_CREDENTIALS; });
+  /* ---------- sign-in ----------
+     Every device signs in to Firebase anonymously. Logging in with a name + password creates
+     sessions/{uid}; the Firestore rules accept it only if the password matches secrets/access,
+     a document no editor can read. All tracker data is then readable only with a valid session.
+       config/roster    { editors: [names], renamed: {old: new} }   names for the login list (no passwords)
+       secrets/access   { editors: {name: password}, managerCode, syncKey }   manager-only
+       sessions/{uid}   { role: editor|manager|sync, name, pin }       one per signed-in device */
+  function ensureAuth(){
+    if(!auth){ return Promise.reject(new Error('Firebase Auth did not load.')); }
+    return new Promise(function(resolve, reject){
+      var stop = auth.onAuthStateChanged(function(u){
+        stop();
+        if(u){ resolve(u); return; }
+        auth.signInAnonymously().then(function(c){ resolve(c.user); }).catch(reject);
+      }, reject);
+    });
   }
 
+  function sessionRef(){ return db.collection('sessions').doc(auth.currentUser.uid); }
+
+  function createSession(role, name, pin){
+    var ref = sessionRef();
+    return ref.delete().catch(function(){}).then(function(){
+      return ref.set({ role: role, name: name, pin: pin, createdAt: new Date().toISOString(), device: String(navigator.userAgent || '').slice(0, 120) });
+    });
+  }
+
+  function loadSession(){
+    return sessionRef().get().then(function(d){ return d.exists ? d.data() : null; }).catch(function(){ return null; });
+  }
+
+  function loadAccessForManager(){
+    return db.collection('secrets').doc('access').get().then(function(d){
+      var a = d.exists ? d.data() : {};
+      state.credentials = { editors: a.editors || {}, managerCode: a.managerCode || '', syncKey: a.syncKey || '', renamed: (state.credentials && state.credentials.renamed) || {} };
+    });
+  }
+
+  function randomKey(){
+    var a = new Uint8Array(18);
+    (window.crypto || window.msCrypto).getRandomValues(a);
+    return Array.prototype.map.call(a, function(b){ return ('0' + b.toString(16)).slice(-2); }).join('');
+  }
+
+  /* One-time upgrade, done by the manager's first login: passwords move from the old readable
+     config/credentials into secrets/access, and config/credentials keeps no passwords. */
+  function upgradeAccess(code){
+    var legacy = state.legacyCredentials || {};
+    if(!legacy.managerCode || code !== legacy.managerCode){ return Promise.reject(new Error('incorrect')); }
+    var editors = legacy.editors || {};
+    return createSession('manager', MANAGER_NAME, code)
+      .catch(function(){
+        return db.collection('secrets').doc('access').set({ editors: editors, managerCode: legacy.managerCode, syncKey: randomKey() })
+          .then(function(){ return createSession('manager', MANAGER_NAME, code); });
+      })
+      .then(function(){ return loadAccessForManager(); })
+      .then(function(){
+        return db.collection('config').doc('roster').set({ editors: Object.keys(state.credentials.editors).sort(), renamed: legacy.renamed || {}, updatedAt: new Date().toISOString() });
+      })
+      .then(function(){
+        return db.collection('config').doc('credentials').set({ migrated: true, renamed: legacy.renamed || {}, note: 'Passwords now live in secrets/access (manager only).' });
+      })
+      .then(function(){ state.migrated = true; state.legacyCredentials = null; });
+  }
+
+  /* Names for the login list. Before the upgrade they come from the old document. */
+  function loadCredentials(){
+    return db.collection('config').doc('roster').get().then(function(doc){
+      if(doc.exists){
+        var d = doc.data(), ed = {};
+        (d.editors || []).forEach(function(n){ ed[n] = ''; });
+        state.migrated = true;
+        return { editors: ed, renamed: d.renamed || {} };
+      }
+      return db.collection('config').doc('credentials').get().then(function(c){
+        var d = c.exists ? c.data() : {}, ed = {};
+        Object.keys(d.editors || {}).forEach(function(n){ ed[n] = ''; });
+        state.migrated = false;
+        state.legacyCredentials = d;
+        return { editors: ed, renamed: d.renamed || {} };
+      });
+    });
+  }
+
+  /* The manager saves the whole list (passwords + names); an editor can only change their own password. */
   function persistCredentials(creds){
-    return db.collection('config').doc('credentials').set(creds)
-      .then(function(){ return { ok: true }; })
-      .catch(function(err){ return { error: String(err) }; });
+    var isMgr = state.identity && state.identity.role === 'manager';
+    var p;
+    if(isMgr){
+      p = db.collection('secrets').doc('access').set({ editors: creds.editors, managerCode: creds.managerCode, syncKey: creds.syncKey || state.credentials.syncKey || randomKey() })
+        .then(function(){
+          return db.collection('config').doc('roster').set({ editors: Object.keys(creds.editors).sort(), renamed: creds.renamed || {}, updatedAt: new Date().toISOString() });
+        });
+    } else {
+      var me = state.identity.name;
+      p = db.collection('secrets').doc('access').update(new firebase.firestore.FieldPath('editors', me), creds.editors[me]);
+    }
+    return p.then(function(){ return { ok: true }; }).catch(function(err){ return { error: String(err) }; });
   }
 
   /* ---------- clock ---------- */
@@ -1791,6 +1870,13 @@
     if(!wrap || !state.credentials) return;
     var names = Object.keys(state.credentials.editors).sort();
     populateAssignEditorSelect();
+    var sk = document.getElementById('sync-key-row');
+    if(sk){
+      sk.innerHTML = state.credentials.syncKey
+        ? '<div class="raw-path"><span class="raw-lab">Production Plan sheet key</span><code dir="ltr">' + escapeHtml(state.credentials.syncKey) + '</code><button type="button" class="raw-copy" data-copy-raw="' + escapeHtml(state.credentials.syncKey) + '">Copy</button></div>'
+          + '<div style="margin-top:4px;">Paste it once in the sheet: Tracker Sync › Set tracker sync key. Keep it private, like a password.</div>'
+        : '';
+    }
     wrap.innerHTML = names.map(function(name){
       var isConfirm = state.confirmDeleteEditor === name;
       var isResetting = state.resettingEditor === name;
@@ -1926,6 +2012,12 @@
         return persistCredentials(updated).then(function(res){
           if(res && res.error){ throw new Error(res.error); }
           state.credentials = updated;
+          // devices signed in under the old name keep working under the new one
+          return db.collection('sessions').where('name', '==', oldName).get().then(function(snap){
+            var b = db.batch(), n = 0;
+            snap.forEach(function(d){ b.update(d.ref, { name: newName }); n++; });
+            return n ? b.commit() : null;
+          }).catch(function(){});
         });
       })
       .then(function(){
@@ -2768,23 +2860,35 @@
       var pw = document.getElementById('gate-editor-password').value;
       var err = document.getElementById('gate-error');
       if(!name){ err.textContent = 'Select your name from the list.'; return; }
-      if(!pw || pw !== state.credentials.editors[name]){ err.textContent = 'Incorrect password.'; return; }
-      err.textContent = '';
-      var editorId = { role:'editor', name: name };
-      saveIdentity(editorId).then(function(){ state.identity = editorId; showMain(); });
+      if(!pw){ err.textContent = 'Enter your password.'; return; }
+      if(!state.migrated){ err.textContent = 'SS Tracker was just upgraded. Ask the manager to log in once, then try again.'; return; }
+      err.textContent = 'Checking…';
+      createSession('editor', name, pw).then(function(){
+        state.credentials.editors[name] = pw;
+        var editorId = { role:'editor', name: name };
+        return saveIdentity(editorId).then(function(){ state.identity = editorId; err.textContent = ''; showMain(); });
+      }).catch(function(e1){
+        err.textContent = /permission/i.test(String(e1 && (e1.code || e1.message) || e1)) ? 'Incorrect password.' : "Couldn't sign in — check your connection and try again.";
+      });
       return;
     }
     if(e.target && e.target.id === 'gate-manager-btn'){
       var code = document.getElementById('gate-manager-code').value.trim();
       var err2 = document.getElementById('gate-error');
-      if(code !== state.credentials.managerCode){ err2.textContent = 'Incorrect access code.'; return; }
-      err2.textContent = '';
-      var mgrId = { role:'manager', name: MANAGER_NAME };
-      saveIdentity(mgrId).then(function(){ state.identity = mgrId; showMain(); });
+      if(!code){ err2.textContent = 'Enter the access code.'; return; }
+      err2.textContent = state.migrated ? 'Checking…' : 'Upgrading SS Tracker sign-in (one time)…';
+      (state.migrated ? createSession('manager', MANAGER_NAME, code).then(loadAccessForManager) : upgradeAccess(code)).then(function(){
+        var mgrId = { role:'manager', name: MANAGER_NAME };
+        return saveIdentity(mgrId).then(function(){ state.identity = mgrId; err2.textContent = ''; showMain(); });
+      }).catch(function(e2){
+        var t = String(e2 && (e2.code || e2.message) || e2);
+        err2.textContent = /permission|incorrect/i.test(t) ? 'Incorrect access code.' : "Couldn't sign in — " + t.slice(0, 140);
+      });
       return;
     }
     if(e.target && e.target.id === 'switch-user-btn'){
-      clearIdentity().then(function(){ location.reload(); });
+      var leave = function(){ clearIdentity().then(function(){ location.reload(); }); };
+      if(auth && auth.currentUser){ sessionRef().delete().then(leave, leave); } else { leave(); }
       return;
     }
     if(e.target && e.target.id === 'change-password-btn'){
@@ -2821,7 +2925,8 @@
       if(isEditorRole){ updated.editors[state.identity.name] = nw; }
       else { updated.managerCode = nw; }
 
-      persistCredentials(updated).then(function(){
+      persistCredentials(updated).then(function(res){
+        if(res && res.error){ throw new Error(res.error); }
         state.credentials = updated;
         pwErr.style.color = 'var(--teal)';
         pwErr.textContent = 'Password updated.';
@@ -3221,7 +3326,9 @@
       + 'Create a free Firebase project, add a Web app, enable Firestore, and paste the config object shown in Project settings → General → Your apps.'
       + '</div></div>';
   } else {
-    loadCredentials().then(function(creds){
+    ensureAuth().then(function(){
+      return loadCredentials();
+    }).then(function(creds){
       state.credentials = creds;
       populateRoster();
       return loadIdentity();
@@ -3230,16 +3337,21 @@
       var ren = (state.credentials && state.credentials.renamed) || {};
       var hops = 0;
       while(id && id.role === 'editor' && id.name && ren[id.name] && hops++ < 10){ id.name = ren[id.name]; saveIdentity(id); }
-      var valid = id && id.name && (
-        (id.role === 'editor' && state.credentials.editors.hasOwnProperty(id.name)) ||
-        (id.role === 'manager')
-      );
-      if(valid){
-        state.identity = id;
-        showMain();
-      } else {
-        showGate();
-      }
+      if(!id || !id.name || !state.migrated){ showGate(); return; }
+      // the device must still have a valid session (password checked by the database rules)
+      return loadSession().then(function(sess){
+        var ok = sess && sess.role === id.role && (id.role !== 'editor' || (sess.name === id.name && state.credentials.editors.hasOwnProperty(id.name)));
+        if(!ok){ clearIdentity(); showGate(); return; }
+        if(id.role === 'editor'){ state.credentials.editors[id.name] = sess.pin; state.identity = id; showMain(); return; }
+        return loadAccessForManager().then(function(){ state.identity = id; showMain(); });
+      });
+    }).catch(function(err){
+      console.error('Sign-in failed:', err);
+      showGate();
+      var t = String(err && (err.code || err.message) || err);
+      document.getElementById('gate-error').textContent = /operation-not-allowed|admin-restricted/i.test(t)
+        ? 'Anonymous sign-in is turned off in Firebase. In the Firebase console: Authentication › Sign-in method › Anonymous › Enable.'
+        : "Couldn't connect to SS Tracker (" + t.slice(0, 120) + "). Check your connection and reload.";
     });
   }
 })();
