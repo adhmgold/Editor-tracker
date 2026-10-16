@@ -348,6 +348,10 @@
     .feed-video,.feed-editor{width:auto;max-width:90px;}
     .slate{flex-direction:column;align-items:flex-start;gap:8px;}
   }
+  .raw-path{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;min-width:0}
+  .raw-path .raw-lab{font-size:11px;font-weight:700;color:var(--navy-soft);text-transform:uppercase;letter-spacing:.04em}
+  .raw-path code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:var(--cream,#F5F2E8);border:1px solid var(--line,#E3DCC6);border-radius:6px;padding:2px 7px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr}
+  .raw-path .raw-copy{font-size:12px;font-weight:700;border:2px solid var(--line,#E3DCC6);background:#fff;color:var(--navy,#14202E);border-radius:8px;padding:2px 10px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -1725,7 +1729,7 @@
     var plan = at.planId ? state.plans[at.planId] : null;
     var dueNote = plan ? (' <span style="font-weight:500;color:var(--navy-faint);">· due '+escapeHtml(planDueText(plan))+'</span>') : '';
     document.getElementById('active-take-summary').innerHTML =
-      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage)+dueNote+baseNote;
+      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage)+dueNote+baseNote+rawPathHtml(plan);
     document.getElementById('f-notes-active').value = at.notes || '';
     document.getElementById('pause-banner').style.display = at.paused ? 'block' : 'none';
     document.getElementById('pause-btn').style.display = at.paused ? 'none' : 'inline-block';
@@ -1979,6 +1983,13 @@
     return flags;
   }
 
+  /* where the raw footage for this video is (plan.rawPath, from the Production Plan's "Raw data" column) */
+  function rawPathHtml(plan){
+    if(!plan || !plan.rawPath){ return ''; }
+    return '<div class="raw-path"><span class="raw-lab">Raw data</span><code dir="ltr" title="' + escapeHtml(plan.rawPath) + '">' + escapeHtml(plan.rawPath) + '</code>'
+      + '<button type="button" class="raw-copy" data-copy-raw="' + escapeHtml(plan.rawPath) + '">Copy</button></div>';
+  }
+
   function planSubHtml(plan, nowMs){
     var parts = [escapeHtml(plan.project || ''), escapeHtml(plan.stage || ''), 'due ' + escapeHtml(planDueText(plan))];
     return parts.filter(Boolean).join(' · ') + planFlagsHtml(plan, nowMs);
@@ -2028,6 +2039,7 @@
         + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
         + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div>'
         + (p.notes ? '<div class="plan-sub" style="color:var(--navy-soft);">' + escapeHtml(p.notes) + '</div>' : '')
+        + rawPathHtml(p)
         + '</div>'
         + actions
         + '</div>';
@@ -2090,7 +2102,7 @@
         return '<div class="plan-row ' + (p.status === 'done' ? 'done' : (p.status === 'dropped' ? 'dropped' : '')) + '">'
           + planPriorityTag(p)
           + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
-          + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div></div>'
+          + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div>' + (p.status === 'todo' ? rawPathHtml(p) : '') + '</div>'
           + live + removable
           + '</div>';
       }).join('');
@@ -2762,6 +2774,14 @@
 
     if(e.target.closest('#add-start-btn')){ addPlanItem(true); return; }
     if(e.target.closest('#assign-task-btn')){ assignTask(); return; }
+    var copyRaw = e.target.closest('[data-copy-raw]');
+    if(copyRaw){
+      var txt = copyRaw.getAttribute('data-copy-raw');
+      var done = function(){ copyRaw.textContent = 'Copied ✓'; setTimeout(function(){ if(copyRaw.isConnected){ copyRaw.textContent = 'Copy'; } }, 1800); };
+      var fallback = function(){ var ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch(err){} document.body.removeChild(ta); };
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done, fallback); } else { fallback(); }
+      return;
+    }
     var startPlanBtn = e.target.closest('[data-start-plan]');
     if(startPlanBtn){ startTakeFromPlan(startPlanBtn.getAttribute('data-start-plan')); return; }
     var askDropBtn = e.target.closest('[data-ask-drop-plan]');
