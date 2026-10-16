@@ -857,14 +857,17 @@
 
   /* ---------- storage (Firebase Firestore) ---------- */
   var firebaseReady = false;
+  var fbApp = null;
   try{
     if(FIREBASE_CONFIG.apiKey.indexOf('PASTE_YOUR') === -1){
-      firebase.initializeApp(FIREBASE_CONFIG);
+      // A named app keeps SS Tracker's sign-in separate from the Control Room dashboard,
+      // which runs on the same website (adhmgold.github.io) and would otherwise share it.
+      fbApp = firebase.initializeApp(FIREBASE_CONFIG, 'sstracker');
       firebaseReady = true;
     }
   } catch(e){ firebaseReady = false; }
-  var db = firebaseReady ? firebase.firestore() : null;
-  var auth = firebaseReady && firebase.auth ? firebase.auth() : null;
+  var db = firebaseReady ? fbApp.firestore() : null;
+  var auth = firebaseReady && firebase.auth ? fbApp.auth() : null;
 
   // Retries a {ok:true}/{error:...}-returning write a few times with backoff,
   // for operations where a silent failure would leave the UI out of sync with
