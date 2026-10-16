@@ -639,7 +639,7 @@
         <button type="button" class="btn-primary btn-small" id="add-editor-confirm">Add</button>
       </div>
       <div class="form-error" id="editor-manage-error"></div>
-      <div class="editor-row-sub" style="margin-top:2px;">Removing an editor only affects who can log in — their past entries stay in every report.</div>
+      <div class="editor-row-sub" style="margin-top:2px;">Removing an editor only affects who can log in — their past entries stay in every report. Renaming moves their past takes, tasks and login to the new name; the password stays the same.</div>
     </div>
 
     <button type="button" class="btn-primary" id="export-all-btn" style="margin-bottom:16px;">Export monthly report — all editors ⤓</button>
@@ -1794,13 +1794,19 @@
     wrap.innerHTML = names.map(function(name){
       var isConfirm = state.confirmDeleteEditor === name;
       var isResetting = state.resettingEditor === name;
+      var isRenaming = state.renamingEditor === name;
       var row = '<div class="stage-manage-row"><div class="editor-manage-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</div>';
-      if(isResetting){
+      if(isRenaming){
+        row += '<input type="text" class="reset-pw-input" id="rename-editor-input" dir="auto" value="'+escapeHtml(name)+'" data-editor="'+escapeHtml(name)+'">'
+          + '<button type="button" class="btn-primary btn-small" data-confirm-rename="'+escapeHtml(name)+'"'+(state.renameBusy ? ' disabled' : '')+'>'+(state.renameBusy ? 'Renaming…' : 'Save')+'</button>'
+          + (state.renameBusy ? '' : '<button type="button" class="switch-link" data-cancel-rename="1">Cancel</button>');
+      } else if(isResetting){
         row += '<input type="text" class="reset-pw-input" id="reset-pw-input" placeholder="New password" data-editor="'+escapeHtml(name)+'">'
           + '<button type="button" class="btn-primary btn-small" data-confirm-reset="'+escapeHtml(name)+'">Save</button>'
           + '<button type="button" class="switch-link" data-cancel-reset="'+escapeHtml(name)+'">Cancel</button>';
       } else {
-        row += '<button type="button" class="switch-link" data-ask-reset="'+escapeHtml(name)+'">reset password</button>';
+        row += '<button type="button" class="switch-link" data-ask-rename="'+escapeHtml(name)+'">rename</button>'
+          + '<button type="button" class="switch-link" data-ask-reset="'+escapeHtml(name)+'">reset password</button>';
         if(isConfirm){
           row += '<button type="button" class="stage-delete confirm" data-confirm-delete-editor="'+escapeHtml(name)+'">Confirm?</button>';
         } else {
@@ -1862,6 +1868,80 @@
       state.credentials = updated;
       renderEditorManageList();
     });
+  }
+
+  /* Renaming an editor moves everything to the new name: login, past takes, plans/tasks, running-take locks.
+     The old name is remembered in credentials.renamed so devices logged in under it switch over, and the
+     dashboard and the Production Plan sync follow it too. */
+  function askRenameEditor(name){
+    setEditorManageError('');
+    state.renamingEditor = name; state.resettingEditor = null; state.confirmDeleteEditor = null;
+    renderEditorManageList();
+    setTimeout(function(){ var el = document.getElementById('rename-editor-input'); if(el){ el.focus(); el.select(); } }, 0);
+  }
+
+  function cancelRenameEditor(){
+    if(state.renameBusy){ return; }
+    state.renamingEditor = null;
+    renderEditorManageList();
+  }
+
+  function renameEditorDocs(collection, oldName, newName){
+    return db.collection(collection).where('editor', '==', oldName).get().then(function(snap){
+      var docs = [];
+      snap.forEach(function(d){ docs.push(d.ref); });
+      var chunks = [];
+      for(var i = 0; i < docs.length; i += 400){ chunks.push(docs.slice(i, i + 400)); }
+      return chunks.reduce(function(p, chunk){
+        return p.then(function(){
+          var batch = db.batch();
+          chunk.forEach(function(ref){ batch.update(ref, { editor: newName }); });
+          return batch.commit();
+        });
+      }, Promise.resolve()).then(function(){ return docs.length; });
+    });
+  }
+
+  function confirmRenameEditor(oldName){
+    var input = document.getElementById('rename-editor-input');
+    var newName = input ? input.value.trim().replace(/\s+/g, ' ') : '';
+    if(!newName){ setEditorManageError('Enter the new name.'); return; }
+    if(newName === oldName){ cancelRenameEditor(); return; }
+    if(newName.indexOf('/') !== -1){ setEditorManageError('The name can\'t contain a slash (/).'); return; }
+    if(state.credentials.editors.hasOwnProperty(newName)){ setEditorManageError('An editor called "' + newName + '" already exists.'); return; }
+    if(state.allActiveTakes && state.allActiveTakes[oldName]){ setEditorManageError(oldName + ' has a take running. Ask them to finish or hold it first, then rename.'); return; }
+    setEditorManageError('Renaming ' + oldName + ' to ' + newName + '… keep this page open.');
+    state.renameBusy = true; renderEditorManageList();
+    var counts = {};
+    renameEditorDocs('entries', oldName, newName).then(function(n){ counts.entries = n; return renameEditorDocs('plans', oldName, newName); })
+      .then(function(n){ counts.plans = n; return renameEditorDocs('locks', oldName, newName); })
+      .then(function(){
+        var updated = JSON.parse(JSON.stringify(state.credentials));
+        updated.editors[newName] = updated.editors[oldName];
+        delete updated.editors[oldName];
+        updated.renamed = updated.renamed || {};
+        Object.keys(updated.renamed).forEach(function(k){ if(updated.renamed[k] === oldName){ updated.renamed[k] = newName; } });
+        updated.renamed[oldName] = newName;
+        delete updated.renamed[newName];
+        return persistCredentials(updated).then(function(res){
+          if(res && res.error){ throw new Error(res.error); }
+          state.credentials = updated;
+        });
+      })
+      .then(function(){
+        // keep this browser's lists in step without waiting for a reload
+        (state.entries || []).forEach(function(e){ if(e.editor === oldName){ e.editor = newName; } });
+        Object.keys(state.plans || {}).forEach(function(k){ if(state.plans[k].editor === oldName){ state.plans[k].editor = newName; } });
+        state.renameBusy = false; state.renamingEditor = null;
+        populateRoster();
+        renderEditorManageList();
+        setEditorManageError('Renamed to ' + newName + ' · ' + (counts.entries || 0) + ' takes and ' + (counts.plans || 0) + ' tasks moved. Their password stays the same.');
+      })
+      .catch(function(err){
+        state.renameBusy = false;
+        renderEditorManageList();
+        setEditorManageError("Couldn't finish renaming (" + String(err && err.message || err).slice(0, 120) + "). Click rename again with the same new name to finish.");
+      });
   }
 
   function confirmAddEditor(){
@@ -2846,6 +2926,11 @@
     if(askDelEditorBtn){ askDeleteEditor(askDelEditorBtn.getAttribute('data-ask-delete-editor')); return; }
     var confirmDelEditorBtn = e.target.closest('[data-confirm-delete-editor]');
     if(confirmDelEditorBtn){ performDeleteEditor(confirmDelEditorBtn.getAttribute('data-confirm-delete-editor')); return; }
+    var askRenameBtn = e.target.closest('[data-ask-rename]');
+    if(askRenameBtn){ askRenameEditor(askRenameBtn.getAttribute('data-ask-rename')); return; }
+    if(e.target.closest('[data-cancel-rename]')){ cancelRenameEditor(); return; }
+    var confirmRenameBtn = e.target.closest('[data-confirm-rename]');
+    if(confirmRenameBtn){ confirmRenameEditor(confirmRenameBtn.getAttribute('data-confirm-rename')); return; }
     var askResetBtn = e.target.closest('[data-ask-reset]');
     if(askResetBtn){ askResetEditor(askResetBtn.getAttribute('data-ask-reset')); return; }
     var cancelResetBtn = e.target.closest('[data-cancel-reset]');
@@ -2856,6 +2941,10 @@
   });
 
   document.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && e.target && e.target.id === 'rename-editor-input'){
+      e.preventDefault();
+      confirmRenameEditor(e.target.getAttribute('data-editor'));
+    }
     if(e.key === 'Enter' && e.target && e.target.id === 'new-project-input'){
       e.preventDefault();
       confirmAddProject();
@@ -3137,6 +3226,10 @@
       populateRoster();
       return loadIdentity();
     }).then(function(id){
+      // an editor who was renamed by the manager keeps working on this device under the new name
+      var ren = (state.credentials && state.credentials.renamed) || {};
+      var hops = 0;
+      while(id && id.role === 'editor' && id.name && ren[id.name] && hops++ < 10){ id.name = ren[id.name]; saveIdentity(id); }
       var valid = id && id.name && (
         (id.role === 'editor' && state.credentials.editors.hasOwnProperty(id.name)) ||
         (id.role === 'manager')
