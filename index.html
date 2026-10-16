@@ -353,6 +353,35 @@
   .raw-path .raw-lab{font-size:11px;font-weight:700;color:var(--navy-soft);text-transform:uppercase;letter-spacing:.04em}
   .raw-path code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:var(--cream,#F5F2E8);border:1px solid var(--line,#E3DCC6);border-radius:6px;padding:2px 7px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr}
   .raw-path .raw-copy{font-size:12px;font-weight:700;border:2px solid var(--line,#E3DCC6);background:#fff;color:var(--navy,#14202E);border-radius:8px;padding:2px 10px;cursor:pointer}
+  #control-room{position:fixed;inset:0;z-index:100;background:var(--cream,#F5F2E8);display:flex;flex-direction:column}
+  #control-room .cr-bar{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:2px solid var(--navy,#14202E);background:#fff}
+  #control-room .cr-sub{flex:1;font-size:12px;color:var(--navy-soft,#5B6676)}
+  #control-room iframe{flex:1;width:100%;border:0;background:var(--cream,#F5F2E8)}
+
+  /* ===== Control Room look: wide layout, tab bar, two-column grid, indigo buttons ===== */
+  #app{max-width:1280px;}
+  .slate{padding:14px 22px;}
+  .slate-title{font-size:24px;}
+  .tabs#tr-tabs{position:sticky;top:8px;z-index:20;box-shadow:0 3px 0 var(--line);}
+  .tabs#tr-tabs .tab-btn{display:flex;align-items:center;justify-content:center;gap:6px;}
+  .tabs#tr-tabs .tab-btn .cnt{font-family:var(--font-body);font-weight:700;font-size:11px;background:var(--cream-deep);border-radius:99px;padding:0 7px;}
+  .tabs#tr-tabs .tab-btn.ext{color:var(--indigo);}
+  .grp{display:none;}
+  .grp.on{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start;}
+  .grp > .card,.grp > div{margin-bottom:0;min-width:0;}
+  .grp > [data-wide],.grp > .reports-card,.grp.single > *{grid-column:1/-1;}
+  #panel-log.active{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;}
+  #panel-log > .card{margin-bottom:0;min-width:0;}
+  #panel-log > #take-active,#panel-log > .card:last-child{grid-column:1/-1;}
+  @media (max-width:900px){
+    .grp.on,#panel-log.active{grid-template-columns:minmax(0,1fr);}
+  }
+  .btn-primary{background:var(--indigo);color:#fff;}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-primary:disabled{background:var(--navy-faint);}
+  .card select:not([class*="gate"]),.card input[type=time]{background:var(--cream);border:2px solid var(--line);color:var(--navy);padding:8px 11px;border-radius:9px;font-family:var(--font-body);font-size:14px;max-width:100%;}
+  .card select:focus-visible{outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo);}
+  .card-head{font-size:15px;}
 </style>
 </head>
 <body>
@@ -378,7 +407,10 @@
 
       <hr class="gate-divider">
 
-      <div class="gate-role-label">I'm the manager</div>
+      <div class="gate-role-label">I'm a manager / lead</div>
+      <div class="field">
+        <select id="gate-manager-name"></select>
+      </div>
       <div class="field">
         <input type="password" id="gate-manager-code" placeholder="Access code">
       </div>
@@ -387,18 +419,25 @@
     </div>
   </div>
 
+  <div id="control-room" style="display:none;" role="dialog" aria-label="Control Room">
+    <div class="cr-bar"><b>Control Room</b><span class="cr-sub" id="cr-sub"></span><button type="button" class="btn-primary btn-small" id="close-control-room">✕ Back to SS Tracker</button></div>
+    <iframe id="cr-frame" title="Control Room" src="about:blank"></iframe>
+  </div>
+
   <div id="main-screen" style="display:none;">
   <div class="slate">
     <div class="slate-left">
       <div class="logo-chip"><img src="data:image/png;base64,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" alt="Science Street" class="logo-img"></div>
       <div>
-        <div class="slate-sub">Science St. · Editor Log</div>
-        <div class="slate-tagline">Science, for real.</div>
+        <div class="slate-title">SS Tracker</div>
+        <div class="slate-sub">Science Street · Editor log</div>
         <div class="identity-line" id="identity-line"></div>
       </div>
     </div>
     <div class="slate-clock" id="clock">—</div>
   </div>
+
+  <nav class="tabs" id="tr-tabs" aria-label="Sections"></nav>
 
   <div class="panel active" id="panel-log">
     <div class="card" id="plan-card">
@@ -547,12 +586,12 @@
   </div>
 
   <div class="panel" id="panel-dashboard">
-    <div class="card">
+    <div class="card" data-group="today" data-wide="1">
       <div class="card-head">Plans &amp; tasks <span class="live-dot" aria-hidden="true"></span></div>
       <div id="plans-overview"><div class="empty-state">Loading…</div></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-group="today">
       <div class="card-head">Assign a task</div>
       <div class="row2">
         <div class="field">
@@ -600,12 +639,12 @@
       <div class="form-error" id="assign-error"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-group="today">
       <div class="card-head">Currently working <span class="live-dot" aria-hidden="true"></span></div>
       <div id="currently-working-list"><div class="empty-state">Loading…</div></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-group="lookup">
       <div class="card-head">Look up a video</div>
       <select id="dash-video-select">
         <option value="">Select a video…</option>
@@ -613,7 +652,7 @@
       <div id="dash-video-detail"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-group="lookup">
       <div class="card-head">Look up an editor</div>
       <select id="dash-editor-select">
         <option value="">Select an editor…</option>
@@ -621,7 +660,7 @@
       <div id="dash-editor-detail"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-group="manage">
       <div class="card-head">Manage stages</div>
       <div id="stage-manage-list"></div>
       <div class="add-new-row">
@@ -631,7 +670,7 @@
       <div class="editor-row-sub" style="margin-top:10px;">Renaming only affects new takes going forward — past entries keep their original stage name.</div>
     </div>
 
-    <div class="card">
+    <div class="card" data-group="manage">
       <div class="card-head">Manage editors</div>
       <div id="editor-manage-list"></div>
       <div class="add-new-row">
@@ -644,6 +683,20 @@
       <div class="editor-row-sub" style="margin-top:2px;">Removing an editor only affects who can log in — their past entries stay in every report. Renaming moves their past takes, tasks and login to the new name; the password stays the same.</div>
     </div>
 
+    <div class="card" data-group="manage">
+      <div class="card-head">Leads <span class="plan-count">· manager logins, each with their own code</span></div>
+      <div id="lead-manage-list"></div>
+      <div class="add-new-row">
+        <input type="text" id="new-lead-name-input" placeholder="Lead name" dir="auto">
+        <input type="text" id="new-lead-code-input" placeholder="Access code" style="max-width:120px;">
+        <button type="button" class="btn-primary btn-small" id="add-lead-confirm">Add</button>
+      </div>
+      <div class="form-error" id="lead-manage-error"></div>
+      <div class="editor-row-sub" style="margin-top:2px;">Each lead logs in under “I'm a manager / lead” with their own name and code, so the tracker and the Control Room show who did what.</div>
+    </div>
+
+    <div data-group="reports" class="card reports-card">
+    <div class="card-head">Reports &amp; team log</div>
     <button type="button" class="btn-primary" id="export-all-btn" style="margin-bottom:16px;">Export monthly report — all editors ⤓</button>
 
     <div class="period-toggle">
@@ -651,6 +704,7 @@
       <button class="period-btn" data-period="week">LAST 7 DAYS</button>
     </div>
     <div id="dash-content"><div class="empty-state">Loading…</div></div>
+    </div>
   </div>
 
   <div class="card" id="password-panel" style="display:none;max-width:360px;">
@@ -692,7 +746,9 @@
   };
 
   var LOCK_TTL_MS = 3 * 60 * 60 * 1000; // a lock goes stale after 3 hours of inactivity
-  var MANAGER_NAME = 'Adhmgold';
+  var MANAGER_NAME = 'Adhmgold';   // the main manager (logs in with the manager code)
+  // the Control Room dashboard; same website as SS Tracker, so it can use this login
+  var CONTROL_ROOM_URL = 'https://adhmgold.github.io/shareh-control-room/?embed=1';
   // Passwords are no longer kept in this page or in a readable database document:
   // they live in secrets/access, which only the manager's signed-in session can read.
   var DEFAULT_CREDENTIALS = { managerCode: '', editors: {} }; // local fallback only — Firestore seeds itself with these on first run
@@ -1126,7 +1182,8 @@
   function loadAccessForManager(){
     return db.collection('secrets').doc('access').get().then(function(d){
       var a = d.exists ? d.data() : {};
-      state.credentials = { editors: a.editors || {}, managerCode: a.managerCode || '', syncKey: a.syncKey || '', renamed: (state.credentials && state.credentials.renamed) || {} };
+      state.credentials = { editors: a.editors || {}, managers: a.managers || {}, managerCode: a.managerCode || '', syncKey: a.syncKey || '', renamed: (state.credentials && state.credentials.renamed) || {} };
+      state.leads = [MANAGER_NAME].concat(Object.keys(state.credentials.managers).sort());
     });
   }
 
@@ -1164,12 +1221,14 @@
         var d = doc.data(), ed = {};
         (d.editors || []).forEach(function(n){ ed[n] = ''; });
         state.migrated = true;
+        state.leads = (d.leads && d.leads.length) ? d.leads : [MANAGER_NAME];
         return { editors: ed, renamed: d.renamed || {} };
       }
       return db.collection('config').doc('credentials').get().then(function(c){
         var d = c.exists ? c.data() : {}, ed = {};
         Object.keys(d.editors || {}).forEach(function(n){ ed[n] = ''; });
         state.migrated = false;
+        state.leads = [MANAGER_NAME];
         state.legacyCredentials = d;
         return { editors: ed, renamed: d.renamed || {} };
       });
@@ -1181,9 +1240,11 @@
     var isMgr = state.identity && state.identity.role === 'manager';
     var p;
     if(isMgr){
-      p = db.collection('secrets').doc('access').set({ editors: creds.editors, managerCode: creds.managerCode, syncKey: creds.syncKey || state.credentials.syncKey || randomKey() })
+      var managers = creds.managers || state.credentials.managers || {};
+      p = db.collection('secrets').doc('access').set({ editors: creds.editors, managers: managers, managerCode: creds.managerCode, syncKey: creds.syncKey || state.credentials.syncKey || randomKey() })
         .then(function(){
-          return db.collection('config').doc('roster').set({ editors: Object.keys(creds.editors).sort(), renamed: creds.renamed || {}, updatedAt: new Date().toISOString() });
+          state.leads = [MANAGER_NAME].concat(Object.keys(managers).sort());
+          return db.collection('config').doc('roster').set({ editors: Object.keys(creds.editors).sort(), leads: state.leads, renamed: creds.renamed || {}, updatedAt: new Date().toISOString() });
         });
     } else {
       var me = state.identity.name;
@@ -1873,6 +1934,7 @@
     if(!wrap || !state.credentials) return;
     var names = Object.keys(state.credentials.editors).sort();
     populateAssignEditorSelect();
+    renderLeadManageList();
     var sk = document.getElementById('sync-key-row');
     if(sk){
       sk.innerHTML = state.credentials.syncKey
@@ -2037,6 +2099,58 @@
         renderEditorManageList();
         setEditorManageError("Couldn't finish renaming (" + String(err && err.message || err).slice(0, 120) + "). Click rename again with the same new name to finish.");
       });
+  }
+
+  /* ---------- leads (manager logins) ---------- */
+  function setLeadError(msg){ var el = document.getElementById('lead-manage-error'); if(el){ el.textContent = msg || ''; } }
+  function renderLeadManageList(){
+    var wrap = document.getElementById('lead-manage-list');
+    if(!wrap || !state.credentials || !state.credentials.managers) return;
+    var names = [MANAGER_NAME].concat(Object.keys(state.credentials.managers).sort());
+    wrap.innerHTML = names.map(function(name){
+      var main = name === MANAGER_NAME;
+      var row = '<div class="stage-manage-row"><div class="editor-manage-name">' + escapeHtml(name) + (main ? ' <span class="plan-count">· main manager</span>' : '') + (state.identity && state.identity.name === name ? ' <span class="plan-count">· you</span>' : '') + '</div>';
+      if(state.resettingLead === name){
+        row += '<input type="text" class="reset-pw-input" id="reset-lead-input" placeholder="New code">'
+          + '<button type="button" class="btn-primary btn-small" data-confirm-lead-reset="' + escapeHtml(name) + '">Save</button>'
+          + '<button type="button" class="switch-link" data-cancel-lead-reset="1">Cancel</button>';
+      } else {
+        row += '<button type="button" class="switch-link" data-ask-lead-reset="' + escapeHtml(name) + '">new code</button>';
+        if(!main){
+          row += state.confirmDeleteLead === name
+            ? '<button type="button" class="stage-delete confirm" data-confirm-delete-lead="' + escapeHtml(name) + '">Confirm?</button>'
+            : '<button type="button" class="stage-delete" data-ask-delete-lead="' + escapeHtml(name) + '" aria-label="Remove lead">×</button>';
+        }
+      }
+      return row + '</div>';
+    }).join('');
+  }
+  function saveLeads(mutate, okMsg){
+    var updated = JSON.parse(JSON.stringify(state.credentials));
+    updated.managers = updated.managers || {};
+    mutate(updated);
+    return persistCredentials(updated).then(function(res){
+      if(res && res.error){ setLeadError("Couldn't save — try again."); return; }
+      state.credentials = updated; state.resettingLead = null; state.confirmDeleteLead = null;
+      setLeadError(okMsg || ''); renderLeadManageList(); populateRoster();
+    });
+  }
+  function addLead(){
+    var n = document.getElementById('new-lead-name-input'), c = document.getElementById('new-lead-code-input');
+    var name = n.value.trim().replace(/\s+/g, ' '), code = c.value.trim();
+    if(!name){ setLeadError('Enter the lead\'s name.'); return; }
+    if(name === MANAGER_NAME || (state.credentials.managers || {}).hasOwnProperty(name)){ setLeadError('There is already a lead called ' + name + '.'); return; }
+    if(state.credentials.editors.hasOwnProperty(name)){ setLeadError(name + ' is an editor. Use a different name for their lead login.'); return; }
+    if(code.length < 4){ setLeadError('The code must be at least 4 characters.'); return; }
+    saveLeads(function(u){ u.managers[name] = code; }, 'Added ' + name + '. They log in under “I\'m a manager / lead”.').then(function(){ n.value = ''; c.value = ''; });
+  }
+  function resetLead(name){
+    var el = document.getElementById('reset-lead-input'), code = el ? el.value.trim() : '';
+    if(code.length < 4){ setLeadError('The code must be at least 4 characters.'); return; }
+    saveLeads(function(u){ if(name === MANAGER_NAME){ u.managerCode = code; } else { u.managers[name] = code; } }, 'New code saved for ' + name + '.');
+  }
+  function removeLead(name){
+    saveLeads(function(u){ delete u.managers[name]; }, name + ' removed. Their login stops working right away.');
   }
 
   function confirmAddEditor(){
@@ -2409,7 +2523,7 @@
       priority: priority,
       deadline: deadline || '',
       addedMidDay: false,
-      assignedBy: MANAGER_NAME,
+      assignedBy: (state.identity && state.identity.name) || MANAGER_NAME,
       createdAt: new Date().toISOString(),
       status: 'todo',
       heldReason: '',
@@ -2877,11 +2991,13 @@
     }
     if(e.target && e.target.id === 'gate-manager-btn'){
       var code = document.getElementById('gate-manager-code').value.trim();
+      var leadName = document.getElementById('gate-manager-name').value || MANAGER_NAME;
       var err2 = document.getElementById('gate-error');
       if(!code){ err2.textContent = 'Enter the access code.'; return; }
+      if(!state.migrated && leadName !== MANAGER_NAME){ err2.textContent = 'The first login after the upgrade must be ' + MANAGER_NAME + ' with the manager code.'; return; }
       err2.textContent = state.migrated ? 'Checking…' : 'Upgrading SS Tracker sign-in (one time)…';
-      (state.migrated ? createSession('manager', MANAGER_NAME, code).then(loadAccessForManager) : upgradeAccess(code)).then(function(){
-        var mgrId = { role:'manager', name: MANAGER_NAME };
+      (state.migrated ? createSession('manager', leadName, code).then(loadAccessForManager) : upgradeAccess(code)).then(function(){
+        var mgrId = { role:'manager', name: leadName };
         return saveIdentity(mgrId).then(function(){ state.identity = mgrId; err2.textContent = ''; showMain(); });
       }).catch(function(e2){
         var t = String(e2 && (e2.code || e2.message) || e2);
@@ -2916,7 +3032,8 @@
       pwErr.style.color = 'var(--red)';
 
       var isEditorRole = state.identity.role === 'editor';
-      var storedPw = isEditorRole ? state.credentials.editors[state.identity.name] : state.credentials.managerCode;
+      var isMainMgr = !isEditorRole && state.identity.name === MANAGER_NAME;
+      var storedPw = isEditorRole ? state.credentials.editors[state.identity.name] : (isMainMgr ? state.credentials.managerCode : (state.credentials.managers || {})[state.identity.name]);
 
       if(cur !== storedPw){ pwErr.textContent = 'Current password is incorrect.'; return; }
       if(!nw || nw.length < 4){ pwErr.textContent = 'New password must be at least 4 characters.'; return; }
@@ -2926,7 +3043,8 @@
       btn.disabled = true;
       var updated = JSON.parse(JSON.stringify(state.credentials));
       if(isEditorRole){ updated.editors[state.identity.name] = nw; }
-      else { updated.managerCode = nw; }
+      else if(isMainMgr){ updated.managerCode = nw; }
+      else { updated.managers = updated.managers || {}; updated.managers[state.identity.name] = nw; }
 
       persistCredentials(updated).then(function(res){
         if(res && res.error){ throw new Error(res.error); }
@@ -3034,6 +3152,29 @@
     if(askDelEditorBtn){ askDeleteEditor(askDelEditorBtn.getAttribute('data-ask-delete-editor')); return; }
     var confirmDelEditorBtn = e.target.closest('[data-confirm-delete-editor]');
     if(confirmDelEditorBtn){ performDeleteEditor(confirmDelEditorBtn.getAttribute('data-confirm-delete-editor')); return; }
+    var trTab = e.target.closest('[data-tr-tab]');
+    if(trTab){ showSection(trTab.getAttribute('data-tr-tab')); window.scrollTo(0, 0); return; }
+    if(e.target.closest('#open-control-room') || e.target.closest('#open-control-room-tab')){
+      var cr = document.getElementById('control-room'), fr = document.getElementById('cr-frame');
+      if(fr.getAttribute('src') === 'about:blank'){ fr.setAttribute('src', CONTROL_ROOM_URL); }
+      document.getElementById('cr-sub').textContent = 'Signed in as ' + state.identity.name + (state.identity.role === 'manager' ? ' (lead)' : '');
+      cr.style.display = 'flex'; document.body.style.overflow = 'hidden';
+      return;
+    }
+    if(e.target.closest('#close-control-room')){
+      document.getElementById('control-room').style.display = 'none'; document.body.style.overflow = '';
+      return;
+    }
+    if(e.target.closest('#add-lead-confirm')){ addLead(); return; }
+    var lr = e.target.closest('[data-ask-lead-reset]');
+    if(lr){ state.resettingLead = lr.getAttribute('data-ask-lead-reset'); state.confirmDeleteLead = null; setLeadError(''); renderLeadManageList(); setTimeout(function(){ var x = document.getElementById('reset-lead-input'); if(x){ x.focus(); } }, 0); return; }
+    if(e.target.closest('[data-cancel-lead-reset]')){ state.resettingLead = null; renderLeadManageList(); return; }
+    var lrc = e.target.closest('[data-confirm-lead-reset]');
+    if(lrc){ resetLead(lrc.getAttribute('data-confirm-lead-reset')); return; }
+    var ld = e.target.closest('[data-ask-delete-lead]');
+    if(ld){ state.confirmDeleteLead = ld.getAttribute('data-ask-delete-lead'); renderLeadManageList(); return; }
+    var ldc = e.target.closest('[data-confirm-delete-lead]');
+    if(ldc){ removeLead(ldc.getAttribute('data-confirm-delete-lead')); return; }
     var askRenameBtn = e.target.closest('[data-ask-rename]');
     if(askRenameBtn){ askRenameEditor(askRenameBtn.getAttribute('data-ask-rename')); return; }
     if(e.target.closest('[data-cancel-rename]')){ cancelRenameEditor(); return; }
@@ -3151,6 +3292,39 @@
       ' &nbsp;<button type="button" class="switch-link" id="switch-user-btn">switch</button>';
   }
 
+  /* ---------- sections (tab bar, like the Control Room) ---------- */
+  var TR_TABS = {
+    manager: [['today', 'Today'], ['lookup', 'Look up'], ['reports', 'Reports'], ['manage', 'Manage team']],
+    editor:  [['log', 'My work']]
+  };
+  function buildSections(){
+    var panel = document.getElementById('panel-dashboard');
+    if(panel && !panel.getAttribute('data-grouped')){
+      panel.setAttribute('data-grouped', '1');
+      var boxes = {};
+      TR_TABS.manager.forEach(function(t){ var d = document.createElement('div'); d.className = 'grp' + (t[0] === 'reports' ? ' single' : ''); d.setAttribute('data-grp', t[0]); boxes[t[0]] = d; });
+      Array.prototype.slice.call(panel.children).forEach(function(el){
+        var g = el.getAttribute('data-group') || 'reports';
+        (boxes[g] || boxes.reports).appendChild(el);
+      });
+      TR_TABS.manager.forEach(function(t){ panel.appendChild(boxes[t[0]]); });
+    }
+    var role = state.identity && state.identity.role === 'manager' ? 'manager' : 'editor';
+    var tabs = TR_TABS[role], cur = null;
+    try { cur = localStorage.getItem('ss_tab_' + role); } catch(e){}
+    if(!tabs.some(function(t){ return t[0] === cur; })){ cur = tabs[0][0]; }
+    var nav = document.getElementById('tr-tabs');
+    nav.innerHTML = tabs.map(function(t){ return '<button type="button" class="tab-btn' + (t[0] === cur ? ' active' : '') + '" data-tr-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('')
+      + '<button type="button" class="tab-btn ext" id="open-control-room-tab">Control Room ↗</button>';
+    showSection(cur);
+  }
+  function showSection(key){
+    document.querySelectorAll('#tr-tabs [data-tr-tab]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-tr-tab') === key); });
+    document.querySelectorAll('#panel-dashboard .grp').forEach(function(g){ g.classList.toggle('on', g.getAttribute('data-grp') === key); });
+    var role = state.identity && state.identity.role === 'manager' ? 'manager' : 'editor';
+    try { localStorage.setItem('ss_tab_' + role, key); } catch(e){}
+  }
+
   function showGate(){
     document.getElementById('boot-loading').style.display = 'none';
     document.getElementById('gate-screen').style.display = 'block';
@@ -3163,6 +3337,7 @@
     document.getElementById('main-screen').style.display = 'block';
     setupForm();
     applyRoleUI();
+    buildSections();
     tickClock();
     setInterval(tickClock, 30000);
     setInterval(tickActiveTakesPanel, 1000);
@@ -3309,6 +3484,12 @@
 
   /* ---------- init ---------- */
   function populateRoster(){
+    var ls = document.getElementById('gate-manager-name');
+    if(ls){
+      var leads = state.leads && state.leads.length ? state.leads : [MANAGER_NAME];
+      ls.innerHTML = leads.map(function(n){ return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
+      ls.style.display = leads.length > 1 ? '' : 'none';
+    }
     var sel = document.getElementById('gate-editor-name');
     sel.innerHTML = '<option value="" disabled selected>Select your name…</option>';
     Object.keys(state.credentials.editors).forEach(function(n){
@@ -3343,7 +3524,7 @@
       if(!id || !id.name || !state.migrated){ showGate(); return; }
       // the device must still have a valid session (password checked by the database rules)
       return loadSession().then(function(sess){
-        var ok = sess && sess.role === id.role && (id.role !== 'editor' || (sess.name === id.name && state.credentials.editors.hasOwnProperty(id.name)));
+        var ok = sess && sess.role === id.role && sess.name === id.name && (id.role !== 'editor' || state.credentials.editors.hasOwnProperty(id.name));
         if(!ok){ clearIdentity(); showGate(); return; }
         if(id.role === 'editor'){ state.credentials.editors[id.name] = sess.pin; state.identity = id; showMain(); return; }
         return loadAccessForManager().then(function(){ state.identity = id; showMain(); });
