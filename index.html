@@ -385,6 +385,14 @@
   .card select:not([class*="gate"]),.card input[type=time]{background:var(--cream);border:2px solid var(--line);color:var(--navy);padding:8px 11px;border-radius:9px;font-family:var(--font-body);font-size:14px;max-width:100%;}
   .card select:focus-visible{outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo);}
   .card-head{font-size:15px;}
+  #sb-modal{position:fixed;inset:0;z-index:120;background:rgba(20,32,46,.45);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
+  #sb-modal .sb-box{background:#fff;border:2px solid var(--navy);border-radius:16px;box-shadow:0 3px 0 var(--line);padding:20px;width:100%;max-width:560px}
+  #sb-modal fieldset{border:2px solid var(--line);border-radius:10px;padding:8px 12px;margin:0 0 12px;display:flex;flex-direction:column;gap:6px}
+  #sb-modal legend{font-family:var(--font-display);font-weight:800;font-size:12px;padding:0 4px}
+  #sb-modal fieldset label{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+  #sb-modal .muted{color:var(--navy-faint);font-size:12px}
+  .sb-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px dashed var(--line);flex-wrap:wrap}
+  .sb-row .grow{flex:1;min-width:180px}
 </style>
 </head>
 <body>
@@ -421,6 +429,8 @@
       <div class="form-error" id="gate-error"></div>
     </div>
   </div>
+
+  <div id="sb-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sb-title"><div class="sb-box" id="sb-box"></div></div>
 
   <div id="control-room" style="display:none;" role="dialog" aria-label="Control Room">
     <iframe id="cr-frame" title="Control Room" src="about:blank"></iframe>
@@ -641,6 +651,16 @@
       </div>
       <button type="button" class="btn-primary" id="assign-task-btn">Assign task</button>
       <div class="form-error" id="assign-error"></div>
+    </div>
+
+    <div class="card" data-group="today" data-wide="1" id="sendback-card">
+      <div class="card-head">Send a finished task back <span class="plan-count">· edits, with his fault or not</span></div>
+      <div class="row2">
+        <div class="field"><label for="sb-editor">Editor</label><select id="sb-editor"><option value="">All editors</option></select></div>
+        <div class="field"><label for="sb-search">Episode</label><input type="text" id="sb-search" placeholder="Search episode, e.g. G4-U3-V14" dir="auto"></div>
+      </div>
+      <button type="button" class="btn-primary btn-small" id="sb-load">Show finished tasks (last 30 days)</button>
+      <div id="sb-list" style="margin-top:12px;"></div>
     </div>
 
     <div class="card" data-group="today">
@@ -1939,6 +1959,7 @@
     var names = Object.keys(state.credentials.editors).sort();
     populateAssignEditorSelect();
     renderLeadManageList();
+    sbFill();
     var sk = document.getElementById('sync-key-row');
     if(sk){
       sk.innerHTML = state.credentials.syncKey
@@ -2103,6 +2124,126 @@
         renderEditorManageList();
         setEditorManageError("Couldn't finish renaming (" + String(err && err.message || err).slice(0, 120) + "). Click rename again with the same new name to finish.");
       });
+  }
+
+  /* ---------- send a finished task back for edits ----------
+     Same records as the Control Room's "Send back for edits": the round is saved on the ORIGINAL task
+     (plans/{id}.edits[]) and a new fix task is added to the editor's plan (revisionOf = original id).
+       his fault      -> the original task loses points (minor / major, KPI settings); late fixes cost more
+       not his fault  -> the original keeps its score; the fix is a normal new task */
+  var SB_REASONS = {
+    editor: ['Mistakes / typos', 'Sync or audio problem', 'Wrong or missing asset', "Didn't follow the brief or style guide", 'Export / technical problem', 'Other'],
+    other: ['Script or content changed', 'Client or manager request', 'Assets came late or wrong', 'Style or direction changed', 'Other']
+  };
+  state.sbDone = {};
+  function sbPoints(){
+    if(state.sbPts){ return Promise.resolve(state.sbPts); }
+    return Promise.resolve().then(function(){ return db.collection('dash_settings').doc('kpi').get(); }).then(function(d){
+      var k = d.exists ? d.data() : {};
+      state.sbPts = { minor: Number(k.editMinor) || 10, major: Number(k.editMajor) || 25 };
+      return state.sbPts;
+    }).catch(function(){ state.sbPts = { minor: 10, major: 25 }; return state.sbPts; });
+  }
+  function sbFill(){
+    var sel = document.getElementById('sb-editor');
+    if(!sel || !state.credentials) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">All editors</option>' + Object.keys(state.credentials.editors).sort().map(function(n){ return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
+    sel.value = cur;
+  }
+  function sbLoad(){
+    var since = new Date(); since.setDate(since.getDate() - 30);
+    var list = document.getElementById('sb-list');
+    list.innerHTML = '<div class="empty-state">Loading…</div>';
+    db.collection('plans').where('doneDate', '>=', todayStr(since)).get().then(function(snap){
+      state.sbDone = {};
+      snap.forEach(function(d){ var x = d.data(); x.id = d.id; if(x.status === 'done'){ state.sbDone[x.id] = x; } });
+      sbRender();
+    }).catch(function(err){ list.innerHTML = '<div class="empty-state">' + escapeHtml(planErrorText(err, 'load finished tasks')) + '</div>'; });
+  }
+  function sbRender(){
+    var list = document.getElementById('sb-list');
+    var ed = document.getElementById('sb-editor').value, q = document.getElementById('sb-search').value.trim().toLowerCase();
+    var rows = Object.keys(state.sbDone).map(function(k){ return state.sbDone[k]; })
+      .filter(function(p){ return (!ed || p.editor === ed) && (!q || String(p.video || '').toLowerCase().indexOf(q) !== -1); })
+      .sort(function(a, b){ return String(b.doneAt || '').localeCompare(String(a.doneAt || '')); });
+    if(!rows.length){ list.innerHTML = '<div class="empty-state">No finished tasks match.</div>'; return; }
+    list.innerHTML = rows.slice(0, 150).map(function(p){
+      var rounds = Array.isArray(p.edits) ? p.edits.length : 0;
+      return '<div class="sb-row"><span class="grow"><b>' + escapeHtml(p.video) + '</b> <span class="muted">' + escapeHtml(p.stage || '') + ' · ' + escapeHtml(p.editor) + ' · finished ' + escapeHtml(formatDateLabel(String(p.doneAt || p.doneDate || '').slice(0, 10))) + '</span>'
+        + (p.revisionOf ? ' <span class="plan-flag late">fix round ' + escapeHtml(String(p.round || '')) + '</span>' : '')
+        + (rounds ? ' <span class="plan-flag info">' + rounds + ' edit round' + (rounds > 1 ? 's' : '') + '</span>' : '') + '</span>'
+        + '<button type="button" class="btn-primary btn-small" data-sendback="' + escapeHtml(p.id) + '">Send back</button></div>';
+    }).join('') + (rows.length > 150 ? '<div class="muted">Showing the 150 most recent. Search or pick an editor to narrow it.</div>' : '');
+  }
+  function sbOpen(id){
+    var p = state.sbDone[id] || state.plans[id];
+    if(!p){ return; }
+    sbPoints().then(function(pts){
+      var t = new Date(); t.setDate(t.getDate() + 1);
+      var opts = function(k){ return SB_REASONS[k].map(function(r){ return '<option>' + escapeHtml(r) + '</option>'; }).join(''); };
+      document.getElementById('sb-box').innerHTML =
+        '<div class="card-head" id="sb-title">Send back for edits</div>'
+        + '<div class="muted" style="margin-bottom:12px;"><b>' + escapeHtml(p.video) + '</b> · ' + escapeHtml(p.stage || '') + ' · ' + escapeHtml(p.editor) + '</div>'
+        + '<form id="sb-form" data-id="' + escapeHtml(p.id) + '">'
+        + '<fieldset><legend>Whose fault?</legend>'
+        + '<label><input type="radio" name="sb-fault" value="editor" checked> His fault <span class="muted">(mistakes: counts against his KPI)</span></label>'
+        + '<label><input type="radio" name="sb-fault" value="other"> Not his fault <span class="muted">(changes, client, assets: no points off)</span></label></fieldset>'
+        + '<fieldset id="sb-sev"><legend>How big?</legend>'
+        + '<label><input type="radio" name="sb-sev" value="minor" checked> Minor <span class="muted">(−' + pts.minor + ' pts)</span></label>'
+        + '<label><input type="radio" name="sb-sev" value="major"> Major <span class="muted">(−' + pts.major + ' pts)</span></label></fieldset>'
+        + '<div class="field"><label for="sb-reason">Reason</label><select id="sb-reason">' + opts('editor') + '</select></div>'
+        + '<div class="field"><label for="sb-note">Notes for the editor</label><textarea id="sb-note" dir="auto" placeholder="What needs fixing (timecodes, Frame.io link…)"></textarea></div>'
+        + '<div class="row2"><div class="field"><label for="sb-date">Fix due date</label><input type="date" id="sb-date" value="' + todayStr(t) + '"></div>'
+        + '<div class="field"><label for="sb-time">Time (optional)</label><input type="time" id="sb-time"></div></div>'
+        + '<div class="field"><label for="sb-prio">Priority</label><select id="sb-prio"><option value="high">High</option><option value="normal" selected>Normal</option><option value="low">Low</option></select></div>'
+        + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><button type="submit" class="btn-primary btn-small">Send back</button><button type="button" class="switch-link" data-sb-close="1">Cancel</button><span class="form-error" id="sb-msg"></span></div>'
+        + '</form>';
+      document.getElementById('sb-modal').style.display = 'flex';
+      state.sbReasonHtml = { editor: opts('editor'), other: opts('other') };
+      document.getElementById('sb-note').focus();
+    });
+  }
+  function sbClose(){ document.getElementById('sb-modal').style.display = 'none'; }
+  function sbSend(form){
+    var id = form.getAttribute('data-id');
+    var p = state.sbDone[id] || state.plans[id];
+    if(!p){ return; }
+    var fault = form.querySelector('[name=sb-fault]:checked').value;
+    var severity = fault === 'editor' ? form.querySelector('[name=sb-sev]:checked').value : '';
+    var reason = document.getElementById('sb-reason').value, note = document.getElementById('sb-note').value.trim();
+    var due = document.getElementById('sb-date').value, time = document.getElementById('sb-time').value || '';
+    var msg = document.getElementById('sb-msg');
+    if(!due){ msg.textContent = 'Pick a due date for the fix.'; return; }
+    var rootId = p.revisionOf || p.id;
+    var btn = form.querySelector('[type=submit]'); btn.disabled = true; msg.textContent = 'Sending…';
+    var rootRef = db.collection('plans').doc(rootId);
+    rootRef.get().then(function(rd){
+      var root = rd.exists ? rd.data() : p;
+      var edits = Array.isArray(root.edits) ? root.edits.slice() : [];
+      var round = edits.length + 1, fixId = uid(), now = new Date().toISOString();
+      var fix = {
+        id: fixId, editor: p.editor, date: todayStr(), dueDate: due, video: p.video, project: p.project || '', stage: p.stage || '',
+        notes: 'Edits round ' + round + ': ' + reason + (note ? ' — ' + note : ''), priority: document.getElementById('sb-prio').value,
+        deadline: time, addedMidDay: false, assignedBy: state.identity.name, createdAt: now, status: 'todo', heldReason: '',
+        doneAt: '', doneDate: '', syncPending: false, needsEditing: true, revisionOf: rootId, round: round,
+        fault: fault, severity: severity, editReason: reason, editNote: note, sentBy: state.identity.name
+      };
+      if(p.rawPath){ fix.rawPath = p.rawPath; }
+      edits.push({ round: round, fault: fault, severity: severity, reason: reason, note: note, at: Date.now(), by: state.identity.name, fixId: fixId, fromId: p.id });
+      return db.collection('plans').doc(fixId).set(fix).then(function(){ return rootRef.set({ edits: edits }, { merge: true }); }).then(function(){ return fix; });
+    }).then(function(fix){
+      if(state.sbDone[rootId]){ state.sbDone[rootId].edits = (state.sbDone[rootId].edits || []).concat([{ round: fix.round }]); }
+      sbClose(); sbRender();
+      var m = document.getElementById('sb-list'); if(m && m.firstChild){ /* keep list */ }
+      alertToast('Sent back to ' + fix.editor + ' (round ' + fix.round + ', ' + (fix.fault === 'editor' ? 'his fault · ' + fix.severity : 'not his fault') + ').');
+    }).catch(function(err){ btn.disabled = false; msg.textContent = planErrorText(err, 'send it back'); });
+  }
+  function alertToast(text){
+    var t = document.getElementById('sb-toast');
+    if(!t){ t = document.createElement('div'); t.id = 'sb-toast'; t.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:130;background:var(--navy);color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 3px 0 rgba(0,0,0,.2)'; document.body.appendChild(t); }
+    t.textContent = text; t.style.display = 'block';
+    clearTimeout(state.toastT); state.toastT = setTimeout(function(){ t.style.display = 'none'; }, 3500);
   }
 
   /* ---------- leads (manager logins) ---------- */
@@ -2397,6 +2538,7 @@
           + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
           + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div>' + (p.status === 'todo' ? rawPathHtml(p) : '') + '</div>'
           + live + removable
+          + (p.status === 'done' ? '<button type="button" class="switch-link" data-sendback="' + escapeHtml(p.id) + '">send back</button>' : '')
           + '</div>';
       }).join('');
       return head + rows;
@@ -3170,6 +3312,10 @@
       return;
     }
     if(e.target.closest('#add-lead-confirm')){ addLead(); return; }
+    if(e.target.closest('#sb-load')){ sbLoad(); return; }
+    var sbBtn = e.target.closest('[data-sendback]');
+    if(sbBtn){ sbOpen(sbBtn.getAttribute('data-sendback')); return; }
+    if(e.target.closest('[data-sb-close]') || e.target.id === 'sb-modal'){ sbClose(); return; }
     var lr = e.target.closest('[data-ask-lead-reset]');
     if(lr){ state.resettingLead = lr.getAttribute('data-ask-lead-reset'); state.confirmDeleteLead = null; setLeadError(''); renderLeadManageList(); setTimeout(function(){ var x = document.getElementById('reset-lead-input'); if(x){ x.focus(); } }, 0); return; }
     if(e.target.closest('[data-cancel-lead-reset]')){ state.resettingLead = null; renderLeadManageList(); return; }
@@ -3193,6 +3339,16 @@
     if(e.target.closest('#add-editor-confirm')){ confirmAddEditor(); return; }
   });
 
+  document.addEventListener('change', function(e){
+    if(e.target && e.target.name === 'sb-fault'){
+      var k = e.target.value;
+      document.getElementById('sb-reason').innerHTML = state.sbReasonHtml[k];
+      document.getElementById('sb-sev').style.display = k === 'editor' ? '' : 'none';
+    }
+    if(e.target && e.target.id === 'sb-editor'){ sbRender(); }
+  });
+  document.addEventListener('input', function(e){ if(e.target && e.target.id === 'sb-search'){ sbRender(); } });
+  document.addEventListener('submit', function(e){ if(e.target && e.target.id === 'sb-form'){ e.preventDefault(); sbSend(e.target); } });
   window.addEventListener('message', function(e){
     if(e.origin === location.origin && e.data === 'cr-close'){ var c = document.getElementById('control-room'); if(c){ c.style.display = 'none'; document.body.style.overflow = ''; } }
   });
