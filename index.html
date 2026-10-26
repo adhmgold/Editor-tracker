@@ -393,6 +393,12 @@
   #sb-modal .muted{color:var(--navy-faint);font-size:12px}
   .sb-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px dashed var(--line);flex-wrap:wrap}
   .sb-row .grow{flex:1;min-width:180px}
+  .loc-bar{grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:2px solid var(--navy);border-radius:14px;padding:10px 14px;box-shadow:0 3px 0 var(--line);}
+  .loc-bar.need{border-color:var(--red);box-shadow:0 0 0 3px var(--red-tint);}
+  .loc-q{font-family:var(--font-display);font-weight:800;font-size:14px;flex:1;min-width:180px}
+  .loc-btn{font:800 13px var(--font-display);border:2px solid var(--line);background:var(--cream);color:var(--navy);border-radius:99px;padding:6px 14px;cursor:pointer}
+  .loc-btn.on{background:var(--yellow);border-color:var(--navy)}
+  .loc-msg{font-size:12px;color:var(--red);font-weight:600}
 </style>
 </head>
 <body>
@@ -454,6 +460,12 @@
   <nav class="tabs" id="tr-tabs" aria-label="Sections"></nav>
 
   <div class="panel active" id="panel-log">
+    <div class="loc-bar" id="loc-bar" style="display:none;">
+      <span class="loc-q">Where are you working today?</span>
+      <button type="button" class="loc-btn" data-loc="office">🏢 Office</button>
+      <button type="button" class="loc-btn" data-loc="home">🏠 Home</button>
+      <span class="loc-msg" id="loc-msg"></span>
+    </div>
     <div class="card" id="plan-card">
       <div class="card-head">Today's plan</div>
       <div id="plan-list"><div class="empty-state">Loading…</div></div>
@@ -569,6 +581,7 @@
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;" id="active-take-buttons">
         <button type="button" class="btn-primary btn-pause" id="pause-btn">⏸ Pause</button>
+        <button type="button" class="btn-primary btn-hold" id="hold-btn">📌 Hold</button>
         <button type="button" class="btn-primary btn-end" id="end-btn">■ End Take</button>
       </div>
       <div class="form-error" id="end-error"></div>
@@ -2700,9 +2713,40 @@
     });
   }
 
+  /* ---------- office / home (asked once a day, saved on every take) ---------- */
+  function todayLocation(){
+    try { return localStorage.getItem('ss_loc_' + todayStr()) || ''; } catch(e){ return state.locToday || ''; }
+  }
+  function setTodayLocation(v){
+    state.locToday = v;
+    try { localStorage.setItem('ss_loc_' + todayStr(), v); } catch(e){}
+    renderLocBar();
+    // a running take picks up the change too
+    if(state.activeTake && state.identity){ state.activeTake.location = v; db.collection('activeTakes').doc(state.identity.name).set({ location: v }, { merge: true }).catch(function(){}); }
+  }
+  function renderLocBar(){
+    var bar = document.getElementById('loc-bar');
+    if(!bar) return;
+    var isEditor = state.identity && state.identity.role === 'editor';
+    bar.style.display = isEditor ? 'flex' : 'none';
+    var v = todayLocation();
+    bar.querySelectorAll('[data-loc]').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-loc') === v); });
+    bar.querySelector('.loc-q').textContent = v ? ('Working from ' + (v === 'home' ? 'home' : 'the office') + ' today') : 'Where are you working today?';
+    if(v){ bar.classList.remove('need'); document.getElementById('loc-msg').textContent = ''; }
+  }
+  function needLocation(){
+    if(todayLocation()) return false;
+    var bar = document.getElementById('loc-bar');
+    bar.classList.add('need');
+    document.getElementById('loc-msg').textContent = 'Choose Office or Home first.';
+    bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return true;
+  }
+
   function startTakeFromPlan(planId){
     var errEl = document.getElementById('plan-error');
     errEl.textContent = '';
+    if(needLocation()){ return; }
     var plan = state.plans[planId];
     if(!plan){ return; }
     if(!state.takesLoaded){ errEl.textContent = 'Still loading — try again in a second.'; return; }
@@ -2723,7 +2767,8 @@
       pauseReason: '',
       pauseLog: [],
       planId: plan.id,
-      resumedFromHold: !!plan.heldReason
+      resumedFromHold: !!plan.heldReason,
+      location: todayLocation()
     };
 
     withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
@@ -2798,7 +2843,8 @@
       planId: take.planId || '',
       outcome: 'finished',
       outcomeNote: '',
-      month: todayStr(new Date(startedMs)).slice(0, 7)
+      month: todayStr(new Date(startedMs)).slice(0, 7),
+      location: take.location || todayLocation() || ''
     };
     if(extraFields){ Object.assign(entry, extraFields); }
 
@@ -2888,6 +2934,7 @@
   // Clicking "End Take" now asks how the take ended before anything is saved.
   function endTake(){
     if(!state.activeTake) return;
+    state.holdMode = false;
     document.getElementById('end-error').textContent = '';
     document.getElementById('end-outcome').value = 'finished';
     document.getElementById('end-note').value = '';
@@ -2897,7 +2944,22 @@
     document.getElementById('end-note').focus();
   }
 
+  // "Hold" = end this take as "resume later" with a reason; the task stays on the editor's list as on hold.
+  function holdTakeQuick(){
+    if(!state.activeTake) return;
+    document.getElementById('end-error').textContent = '';
+    document.getElementById('end-outcome').value = 'resume_later';
+    document.getElementById('end-note').value = '';
+    state.holdMode = true;
+    updateEndPromptLabels();
+    document.getElementById('end-note-label').textContent = 'Why are you putting it on hold? (required)';
+    document.getElementById('end-prompt').style.display = 'block';
+    document.getElementById('active-take-buttons').style.display = 'none';
+    document.getElementById('end-note').focus();
+  }
+
   function hideEndPrompt(){
+    state.holdMode = false;
     document.getElementById('end-prompt').style.display = 'none';
     document.getElementById('active-take-buttons').style.display = 'flex';
   }
@@ -2914,6 +2976,11 @@
     var errEl = document.getElementById('end-error');
     errEl.textContent = '';
 
+    if(outcome === 'resume_later' && state.holdMode && !outcomeNote){
+      errEl.textContent = 'Write why it is on hold (your manager reviews hold reasons).';
+      document.getElementById('end-note').focus();
+      return;
+    }
     if(outcome === 'other' && !outcomeNote){
       errEl.textContent = 'Add a short note describing the status.';
       document.getElementById('end-note').focus();
@@ -2986,6 +3053,7 @@
       errEl.textContent = 'Finish or hold your current take before resuming another one.';
       return;
     }
+    if(needLocation()){ return; }
 
     var editor = state.identity.name;
     populateProjectSelect(project);
@@ -3002,7 +3070,8 @@
       pausedAt: null,
       pauseReason: '',
       pauseLog: [],
-      resumedFromHold: true
+      resumedFromHold: true,
+      location: todayLocation()
     };
 
     withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
@@ -3221,6 +3290,9 @@
     var periodBtn = e.target.closest('[data-period]');
     if(periodBtn){ setPeriod(periodBtn.getAttribute('data-period')); return; }
 
+    if(e.target.closest('#hold-btn')){ holdTakeQuick(); return; }
+    var locBtn = e.target.closest('[data-loc]');
+    if(locBtn){ setTodayLocation(locBtn.getAttribute('data-loc')); return; }
     var endBtn = e.target.closest('#end-btn');
     if(endBtn){ endTake(); return; }
 
@@ -3502,6 +3574,7 @@
     setupForm();
     applyRoleUI();
     buildSections();
+    renderLocBar();
     tickClock();
     setInterval(tickClock, 30000);
     setInterval(tickActiveTakesPanel, 1000);
