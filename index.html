@@ -1036,4 +1036,2786 @@
     }).catch(function(){ return fallback; });
   }
 
-  function persistListConfig(doc
+  function persistListConfig(docId, list){
+    return db.collection('config').doc(docId).set({ list: list })
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
+  }
+
+  function loadProjects(){
+    return loadListConfig('projects', ['Talemiaa', 'Sharee7']);
+  }
+
+  function persistProjects(projects){
+    return persistListConfig('projects', projects);
+  }
+
+  function loadStages(){
+    return loadListConfig('stages', ['First Cut', 'B Rolls', 'Sound Design', 'Final Video']);
+  }
+
+  function persistStages(stages){
+    return persistListConfig('stages', stages);
+  }
+
+  function showDbNotice(err){
+    var quota = err && (err.code === 'resource-exhausted' || /quota/i.test(String(err.message || err)));
+    var el = document.getElementById('db-notice');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'db-notice';
+      el.style.cssText = 'background:#FCE1E7;color:#9A0029;border:2px solid #F2003C;border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:13px;font-weight:600;';
+      var app = document.getElementById('app');
+      app.insertBefore(el, app.firstChild);
+    }
+    el.textContent = quota
+      ? "Today's free database quota has been used up, so some data may be missing or won't save until it resets (around 10:00 Cairo time)."
+      : "Having trouble reaching the database — what you see may be out of date.";
+    el.style.display = 'block';
+  }
+
+  function clearDbNotice(){
+    var el = document.getElementById('db-notice');
+    if(el){ el.style.display = 'none'; }
+  }
+
+  // Every listener reads each matching document once when the page opens, so
+  // queries are kept as narrow as possible (an editor only loads their own data).
+  function watchQueryMap(query, onUpdate){
+    return query.onSnapshot(function(snap){
+      var map = {};
+      snap.forEach(function(doc){ map[doc.id] = doc.data(); });
+      clearDbNotice();
+      onUpdate(map);
+    }, function(err){ console.error('Listener error:', err); showDbNotice(err); });
+  }
+
+  function watchCollection(name, onUpdate){
+    return watchQueryMap(db.collection(name), onUpdate);
+  }
+
+  // opts.editor + opts.month -> one editor's month (equality filters only, so no
+  // composite index is needed); opts.since -> everything on/after a date (manager).
+  function watchEntries(onUpdate, opts){
+    var q = db.collection('entries');
+    if(opts && opts.editor){ q = q.where('editor', '==', opts.editor).where('month', '==', opts.month); }
+    else if(opts && opts.since){ q = q.where('date', '>=', opts.since); }
+    return q.onSnapshot(function(snap){
+      var arr = [];
+      snap.forEach(function(doc){ arr.push(doc.data()); });
+      clearDbNotice();
+      onUpdate(arr);
+    }, function(err){ console.error('Listener error:', err); showDbNotice(err); });
+  }
+
+  // state.entries = the live window plus any months / videos fetched on demand
+  function rebuildEntries(){
+    var seen = {};
+    var out = [];
+    function add(arr){
+      arr.forEach(function(e){ if(!seen[e.id]){ seen[e.id] = true; out.push(e); } });
+    }
+    add(state.entryParts.live);
+    Object.keys(state.entryParts.extra).forEach(function(k){ add(state.entryParts.extra[k]); });
+    state.entries = out;
+  }
+
+  function entryWindowStart(){
+    var d = new Date();
+    if(d.getDate() <= 7){ d.setDate(1); d.setMonth(d.getMonth() - 1); }
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-01';
+  }
+
+  // One-time: give old entries a `month` field (so queries can be narrow) and build the
+  // video-name index. Whoever opens the app first after the update does the work.
+  function migrateEntryMonths(role, name){
+    var localKey = 'ss_months_done_' + (role === 'manager' ? 'manager' : name);
+    try{ if(localStorage.getItem(localKey)){ return Promise.resolve(); } } catch(e){}
+    var metaRef = db.collection('config').doc('meta');
+    return metaRef.get().then(function(doc){
+      if(doc.exists && doc.data().entriesMonthDone){ return null; }
+      var q = role === 'manager' ? db.collection('entries') : db.collection('entries').where('editor', '==', name);
+      return q.get().then(function(snap){
+        var pending = [];
+        var videos = {};
+        snap.forEach(function(d){
+          var e = d.data();
+          if(e.video){ videos[e.video] = true; }
+          if(!e.month && e.date){ pending.push({ ref: d.ref, month: e.date.slice(0, 7) }); }
+        });
+        var chain = Promise.resolve();
+        for(var i = 0; i < pending.length; i += 400){
+          (function(chunk){
+            chain = chain.then(function(){
+              var batch = db.batch();
+              chunk.forEach(function(p){ batch.set(p.ref, { month: p.month }, { merge: true }); });
+              return batch.commit();
+            });
+          })(pending.slice(i, i + 400));
+        }
+        if(role === 'manager'){
+          var names = Object.keys(videos);
+          for(var j = 0; j < names.length; j += 200){
+            (function(part){
+              chain = chain.then(function(){
+                return db.collection('config').doc('videoIndex').set(
+                  { list: firebase.firestore.FieldValue.arrayUnion.apply(null, part) }, { merge: true });
+              });
+            })(names.slice(j, j + 200));
+          }
+          chain = chain.then(function(){ return metaRef.set({ entriesMonthDone: true }, { merge: true }); });
+        }
+        return chain;
+      });
+    }).then(function(){
+      try{ localStorage.setItem(localKey, '1'); } catch(e){}
+    }).catch(function(err){ console.error('Month migration skipped:', err); });
+  }
+
+  function loadIdentity(){
+    try{
+      var raw = localStorage.getItem('ss_identity');
+      return Promise.resolve(raw ? JSON.parse(raw) : null);
+    } catch(e){ return Promise.resolve(null); }
+  }
+
+  function saveIdentity(id){
+    try{ localStorage.setItem('ss_identity', JSON.stringify(id)); } catch(e){}
+    return Promise.resolve();
+  }
+
+  function clearIdentity(){
+    try{ localStorage.removeItem('ss_identity'); } catch(e){}
+    return Promise.resolve();
+  }
+
+  /* ---------- sign-in ----------
+     Every device signs in to Firebase anonymously. Logging in with a name + password creates
+     sessions/{uid}; the Firestore rules accept it only if the password matches secrets/access,
+     a document no editor can read. All tracker data is then readable only with a valid session.
+       config/roster    { editors: [names], renamed: {old: new} }   names for the login list (no passwords)
+       secrets/access   { editors: {name: password}, managerCode, syncKey }   manager-only
+       sessions/{uid}   { role: editor|manager|sync, name, pin }       one per signed-in device */
+  function ensureAuth(){
+    if(!auth){ return Promise.reject(new Error('Firebase Auth did not load.')); }
+    return new Promise(function(resolve, reject){
+      var stop = auth.onAuthStateChanged(function(u){
+        stop();
+        if(u){ resolve(u); return; }
+        auth.signInAnonymously().then(function(c){ resolve(c.user); }).catch(reject);
+      }, reject);
+    });
+  }
+
+  function sessionRef(){ return db.collection('sessions').doc(auth.currentUser.uid); }
+
+  function createSession(role, name, pin){
+    var ref = sessionRef();
+    return ref.delete().catch(function(){}).then(function(){
+      return ref.set({ role: role, name: name, pin: pin, createdAt: new Date().toISOString(), device: String(navigator.userAgent || '').slice(0, 120) });
+    });
+  }
+
+  function loadSession(){
+    return sessionRef().get().then(function(d){ return d.exists ? d.data() : null; }).catch(function(){ return null; });
+  }
+
+  function loadAccessForManager(){
+    return db.collection('secrets').doc('access').get().then(function(d){
+      var a = d.exists ? d.data() : {};
+      state.credentials = { editors: a.editors || {}, managers: a.managers || {}, managerCode: a.managerCode || '', syncKey: a.syncKey || '', renamed: (state.credentials && state.credentials.renamed) || {} };
+      state.leads = [MANAGER_NAME].concat(Object.keys(state.credentials.managers).sort());
+    });
+  }
+
+  function randomKey(){
+    var a = new Uint8Array(18);
+    (window.crypto || window.msCrypto).getRandomValues(a);
+    return Array.prototype.map.call(a, function(b){ return ('0' + b.toString(16)).slice(-2); }).join('');
+  }
+
+  /* One-time upgrade, done by the manager's first login: passwords move from the old readable
+     config/credentials into secrets/access, and config/credentials keeps no passwords. */
+  function upgradeAccess(code){
+    var legacy = state.legacyCredentials || {};
+    if(!legacy.managerCode || code !== legacy.managerCode){ return Promise.reject(new Error('incorrect')); }
+    var editors = legacy.editors || {};
+    return createSession('manager', MANAGER_NAME, code)
+      .catch(function(){
+        return db.collection('secrets').doc('access').set({ editors: editors, managerCode: legacy.managerCode, syncKey: randomKey() })
+          .then(function(){ return createSession('manager', MANAGER_NAME, code); });
+      })
+      .then(function(){ return loadAccessForManager(); })
+      .then(function(){
+        return db.collection('config').doc('roster').set({ editors: Object.keys(state.credentials.editors).sort(), renamed: legacy.renamed || {}, updatedAt: new Date().toISOString() });
+      })
+      .then(function(){
+        return db.collection('config').doc('credentials').set({ migrated: true, renamed: legacy.renamed || {}, note: 'Passwords now live in secrets/access (manager only).' });
+      })
+      .then(function(){ state.migrated = true; state.legacyCredentials = null; });
+  }
+
+  /* Names for the login list. Before the upgrade they come from the old document. */
+  function loadCredentials(){
+    return db.collection('config').doc('roster').get().then(function(doc){
+      if(doc.exists){
+        var d = doc.data(), ed = {};
+        (d.editors || []).forEach(function(n){ ed[n] = ''; });
+        state.migrated = true;
+        state.leads = (d.leads && d.leads.length) ? d.leads : [MANAGER_NAME];
+        return { editors: ed, renamed: d.renamed || {} };
+      }
+      return db.collection('config').doc('credentials').get().then(function(c){
+        var d = c.exists ? c.data() : {}, ed = {};
+        Object.keys(d.editors || {}).forEach(function(n){ ed[n] = ''; });
+        state.migrated = false;
+        state.leads = [MANAGER_NAME];
+        state.legacyCredentials = d;
+        return { editors: ed, renamed: d.renamed || {} };
+      });
+    });
+  }
+
+  /* The manager saves the whole list (passwords + names); an editor can only change their own password. */
+  function persistCredentials(creds){
+    var isMgr = state.identity && state.identity.role === 'manager';
+    var p;
+    if(isMgr){
+      var managers = creds.managers || state.credentials.managers || {};
+      p = db.collection('secrets').doc('access').set({ editors: creds.editors, managers: managers, managerCode: creds.managerCode, syncKey: creds.syncKey || state.credentials.syncKey || randomKey() })
+        .then(function(){
+          state.leads = [MANAGER_NAME].concat(Object.keys(managers).sort());
+          return db.collection('config').doc('roster').set({ editors: Object.keys(creds.editors).sort(), leads: state.leads, renamed: creds.renamed || {}, updatedAt: new Date().toISOString() });
+        });
+    } else {
+      var me = state.identity.name;
+      p = db.collection('secrets').doc('access').update(new firebase.firestore.FieldPath('editors', me), creds.editors[me]);
+    }
+    return p.then(function(){ return { ok: true }; }).catch(function(err){ return { error: String(err) }; });
+  }
+
+  /* ---------- clock ---------- */
+  function tickClock(){
+    var d = new Date();
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var el = document.getElementById('clock');
+    if(el){
+      el.textContent = days[d.getDay()]+' '+pad(d.getDate())+' '+months[d.getMonth()]+' · '+pad(d.getHours())+':'+pad(d.getMinutes());
+    }
+  }
+
+  /* ---------- form setup (rendered once, uncontrolled inputs) ---------- */
+  function setupForm(){
+    populateProjectSelect();
+    populateStageSelect();
+  }
+
+  function populateProjectSelect(selectedValue){
+    var sel = document.getElementById('f-project');
+    var current = selectedValue || sel.value;
+    sel.innerHTML = state.projects.map(function(p){
+      return '<option value="'+escapeHtml(p)+'">'+escapeHtml(p)+'</option>';
+    }).join('') + '<option value="__add_new__">+ Add new project…</option>';
+    if(current && state.projects.indexOf(current) !== -1){ sel.value = current; }
+    fillSimpleSelect('m-project', state.projects);
+  }
+
+  function populateStageSelect(selectedValue){
+    var sel = document.getElementById('f-stage');
+    var current = selectedValue || sel.value;
+    sel.innerHTML = state.stages.map(function(s){
+      return '<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>';
+    }).join('') + '<option value="__add_new__">+ Add new stage…</option>';
+    if(current && state.stages.indexOf(current) !== -1){ sel.value = current; }
+    fillSimpleSelect('m-stage', state.stages);
+  }
+
+  function confirmAddProject(){
+    var input = document.getElementById('new-project-input');
+    var name = input.value.trim();
+    if(!name){ input.focus(); return; }
+    if(state.projects.indexOf(name) === -1){
+      var updated = state.projects.concat([name]);
+      persistProjects(updated).then(function(){
+        state.projects = updated;
+        populateProjectSelect(name);
+        cancelAddProject();
+      });
+    } else {
+      populateProjectSelect(name);
+      cancelAddProject();
+    }
+  }
+
+  function cancelAddProject(){
+    document.getElementById('add-project-row').style.display = 'none';
+    document.getElementById('new-project-input').value = '';
+    if(document.getElementById('f-project').value === '__add_new__'){
+      populateProjectSelect(state.projects[0] || '');
+    }
+  }
+
+  function confirmAddStage(){
+    var input = document.getElementById('new-stage-input');
+    var name = input.value.trim();
+    if(!name){ input.focus(); return; }
+    if(state.stages.indexOf(name) === -1){
+      var updated = state.stages.slice();
+      if(updated.length > 0){
+        updated.splice(updated.length - 1, 0, name); // land before the current final stage
+      } else {
+        updated.push(name);
+      }
+      persistStages(updated).then(function(){
+        state.stages = updated;
+        populateStageSelect(name);
+        cancelAddStage();
+      });
+    } else {
+      populateStageSelect(name);
+      cancelAddStage();
+    }
+  }
+
+  function cancelAddStage(){
+    document.getElementById('add-stage-row').style.display = 'none';
+    document.getElementById('new-stage-input').value = '';
+    if(document.getElementById('f-stage').value === '__add_new__'){
+      populateStageSelect(state.stages[0] || '');
+    }
+  }
+
+  /* ---------- manage stages (manager dashboard) ---------- */
+  function renderStageManageList(){
+    var wrap = document.getElementById('stage-manage-list');
+    if(!wrap) return;
+    wrap.innerHTML = state.stages.map(function(name, i){
+      var isConfirm = state.confirmDeleteStage === name;
+      return '<div class="stage-manage-row">'
+        + '<div class="stage-arrows">'
+        +   '<button type="button" class="stage-arrow" data-move-up="'+escapeHtml(name)+'"'+(i===0?' disabled':'')+'>▲</button>'
+        +   '<button type="button" class="stage-arrow" data-move-down="'+escapeHtml(name)+'"'+(i===state.stages.length-1?' disabled':'')+'>▼</button>'
+        + '</div>'
+        + '<input type="text" class="stage-name-field" value="'+escapeHtml(name)+'" data-original="'+escapeHtml(name)+'">'
+        + (isConfirm
+            ? '<button type="button" class="stage-delete confirm" data-confirm-delete="'+escapeHtml(name)+'">Confirm?</button>'
+            : '<button type="button" class="stage-delete" data-ask-delete="'+escapeHtml(name)+'" aria-label="Delete stage">×</button>')
+        + '</div>';
+    }).join('');
+  }
+
+  function moveStage(name, dir){
+    var idx = state.stages.indexOf(name);
+    if(idx < 0) return;
+    var newIdx = idx + (dir === 'up' ? -1 : 1);
+    if(newIdx < 0 || newIdx >= state.stages.length) return;
+    var updated = state.stages.slice();
+    var tmp = updated[idx];
+    updated[idx] = updated[newIdx];
+    updated[newIdx] = tmp;
+    persistStages(updated).then(function(){
+      state.stages = updated;
+      renderStageManageList();
+      populateStageSelect();
+    });
+  }
+
+  function renameStage(oldName, newName){
+    newName = (newName || '').trim();
+    if(!newName || newName === oldName){ renderStageManageList(); return; }
+    if(state.stages.indexOf(newName) !== -1){
+      window.alert('That stage name already exists.');
+      renderStageManageList();
+      return;
+    }
+    var updated = state.stages.map(function(s){ return s === oldName ? newName : s; });
+    persistStages(updated).then(function(){
+      state.stages = updated;
+      renderStageManageList();
+      populateStageSelect();
+    });
+  }
+
+  function askDeleteStage(name){
+    state.confirmDeleteStage = name;
+    renderStageManageList();
+  }
+
+  function performDeleteStage(name){
+    var updated = state.stages.filter(function(s){ return s !== name; });
+    state.confirmDeleteStage = null;
+    persistStages(updated).then(function(){
+      state.stages = updated;
+      renderStageManageList();
+      populateStageSelect();
+    });
+  }
+
+  function confirmAddStageManage(){
+    var input = document.getElementById('new-stage-manage-input');
+    var name = input.value.trim();
+    if(!name){ input.focus(); return; }
+    if(state.stages.indexOf(name) !== -1){
+      window.alert('That stage already exists.');
+      return;
+    }
+    var updated = state.stages.slice();
+    if(updated.length > 0){
+      updated.splice(updated.length - 1, 0, name);
+    } else {
+      updated.push(name);
+    }
+    persistStages(updated).then(function(){
+      state.stages = updated;
+      input.value = '';
+      renderStageManageList();
+      populateStageSelect();
+    });
+  }
+
+  function refreshDatalists(){
+    var editors = Array.from(new Set(state.entries.map(function(e){ return e.editor; }))).sort();
+    var videos = Array.from(new Set(
+      state.entries.map(function(e){ return e.video; })
+        .concat(Object.keys(state.plans).map(function(k){ return state.plans[k].video; }))
+    )).sort();
+    document.getElementById('editor-list').innerHTML = editors.map(function(e){ return '<option value="'+escapeHtml(e)+'">'; }).join('');
+    document.getElementById('video-list').innerHTML = videos.map(function(v){ return '<option value="'+escapeHtml(v)+'">'; }).join('');
+  }
+
+  /* ---------- collision warning ---------- */
+  function checkVideoLock(){
+    var video = document.getElementById('f-video').value.trim();
+    var warnEl = document.getElementById('lock-warning');
+    var lock = video ? state.locks[video] : null;
+
+    if(!lock){ warnEl.style.display = 'none'; return; }
+
+    var age = Date.now() - new Date(lock.lastActiveAt).getTime();
+    if(age > LOCK_TTL_MS || lock.editor === state.identity.name){
+      warnEl.style.display = 'none';
+      return;
+    }
+
+    var mins = Math.round(age / 60000);
+    var agoTxt = mins < 60 ? (mins + 'm ago') : (Math.round(mins/60) + 'h ago');
+    warnEl.innerHTML = '⚠ <strong>' + escapeHtml(lock.editor) + '</strong> is already working on this episode (active ' + agoTxt + '). Check with them before opening it.';
+    warnEl.style.display = 'block';
+  }
+
+  /* ---------- today feed ---------- */
+  function renderFeed(){
+    var dateVal = todayStr();
+    var rows = state.entries
+      .filter(function(e){ return e.date === dateVal; })
+      .filter(function(e){ return state.identity.role !== 'editor' || e.editor === state.identity.name; })
+      .sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+
+    var wrap = document.getElementById('today-feed');
+    if(state.loading){ wrap.innerHTML = '<div class="empty-state">Loading…</div>'; return; }
+    if(rows.length === 0){
+      wrap.innerHTML = '<div class="empty-state">Nothing logged yet today.</div>';
+      return;
+    }
+    wrap.innerHTML = rows.map(function(e){
+      var t = new Date(e.loggedAt);
+      var timeStr = pad(t.getHours())+':'+pad(t.getMinutes());
+      var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
+      return '<div class="feed-row">'
+        + '<div class="feed-time">'+timeStr+'</div>'
+        + '<div class="feed-editor" title="'+escapeHtml(e.editor)+'">'+escapeHtml(e.editor)+'</div>'
+        + '<div class="feed-video" title="'+escapeHtml(e.video)+' · '+escapeHtml(e.project||'')+'">'+videoLabel+'</div>'
+        + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
+        + '<div class="feed-dur">'+formatHM(e.hours)+'</div>'
+        + pauseBadgeHtml(e) + holdBadgeHtml(e)
+        + '<div class="feed-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes)+'</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  /* ---------- dashboard ---------- */
+  /* ---------- video lookup ---------- */
+  // Fetches just this video's entries (a handful of reads) instead of holding all history.
+  function lookUpVideo(video){
+    if(!video){ renderVideoDetail(''); return; }
+    var wrap = document.getElementById('dash-video-detail');
+    wrap.innerHTML = '<div class="empty-state">Loading…</div>';
+    db.collection('entries').where('video', '==', video).get().then(function(snap){
+      var arr = [];
+      snap.forEach(function(d){ arr.push(d.data()); });
+      state.entryParts.extra['v|' + video] = arr;
+      rebuildEntries();
+      renderVideoDetail(video);
+    }).catch(function(err){
+      wrap.innerHTML = '<div class="empty-state">Couldn\'t load this video — try again.</div>';
+      showDbNotice(err);
+    });
+  }
+
+  function populateDashVideoSelect(){
+    var sel = document.getElementById('dash-video-select');
+    if(!sel) return;
+    var current = sel.value;
+    var fromPlans = Object.keys(state.plans).map(function(k){ return state.plans[k].video; });
+    var videos = Array.from(new Set(
+      state.videoIndex.concat(state.entries.map(function(e){ return e.video; })).concat(fromPlans)
+    )).filter(Boolean).sort();
+    sel.innerHTML = '<option value="">Select a video…</option>' + videos.map(function(v){
+      return '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>';
+    }).join('');
+    if(current && videos.indexOf(current) !== -1){
+      sel.value = current;
+      renderVideoDetail(current);
+    }
+  }
+
+  function renderVideoDetail(video){
+    var wrap = document.getElementById('dash-video-detail');
+    if(!wrap) return;
+    if(!video){ wrap.innerHTML = ''; return; }
+
+    var rows = state.entries.filter(function(e){ return e.video === video; })
+      .sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+
+    if(rows.length === 0){
+      wrap.innerHTML = '<div class="empty-state">No takes logged for this video yet.</div>';
+      return;
+    }
+
+    var totalHours = rows.reduce(function(s,e){ return s + e.hours; }, 0);
+    var project = rows[0].project || '';
+    var touched = new Set(rows.map(function(e){ return e.stage; }));
+    var furthestIdx = -1;
+    state.stages.forEach(function(name, i){ if(touched.has(name)) furthestIdx = i; });
+    var currentStage = furthestIdx >= 0 ? state.stages[furthestIdx] : '—';
+
+    var byEditor = {};
+    rows.forEach(function(e){
+      if(!byEditor[e.editor]){ byEditor[e.editor] = { hours: 0, count: 0 }; }
+      byEditor[e.editor].hours += e.hours;
+      byEditor[e.editor].count += 1;
+    });
+    var editorList = Object.keys(byEditor).map(function(name){
+      return { name: name, hours: byEditor[name].hours, count: byEditor[name].count };
+    }).sort(function(a,b){ return b.hours - a.hours; });
+
+    var html = '';
+    html += '<div class="video-detail-head">'
+      + '<div class="video-detail-title">' + escapeHtml(video) + (project ? ' <span style="color:var(--navy-faint);font-weight:600;font-size:13px;">· '+escapeHtml(project)+'</span>' : '') + '</div>'
+      + '<div class="video-detail-total">' + formatHM(totalHours) + ' total · ' + escapeHtml(currentStage) + '</div>'
+      + '</div>';
+
+    html += '<div class="editor-grid">' + editorList.map(function(ed){
+      return '<div class="editor-card">'
+        + '<div class="editor-name" title="'+escapeHtml(ed.name)+'">'+escapeHtml(ed.name)+'</div>'
+        + '<div class="editor-hours">'+formatHM(ed.hours)+'</div>'
+        + '<div class="editor-sub">'+ed.count+' take'+(ed.count===1?'':'s')+'</div>'
+        + '</div>';
+    }).join('') + '</div>';
+
+    html += '<div class="editor-row-sub" style="margin-top:14px;">Full history</div>';
+    html += rows.map(function(e){
+      var dateStr = formatDateLabel(e.date);
+      return '<div class="vh-row">'
+        + '<div class="vh-date">'+escapeHtml(dateStr)+'</div>'
+        + timeRangeHtml(e)
+        + '<div class="vh-editor" title="'+escapeHtml(e.editor)+'">'+escapeHtml(e.editor)+'</div>'
+        + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
+        + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
+        + pauseBadgeHtml(e) + holdBadgeHtml(e)
+        + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
+        + '</div>';
+    }).join('');
+
+    wrap.innerHTML = html;
+  }
+
+  /* ---------- editor lookup ---------- */
+  function populateDashEditorSelect(){
+    var sel = document.getElementById('dash-editor-select');
+    if(!sel) return;
+    var current = sel.value;
+    var rosterNames = state.credentials ? Object.keys(state.credentials.editors) : [];
+    var editors = Array.from(new Set(rosterNames.concat(state.entries.map(function(e){ return e.editor; })))).sort();
+    sel.innerHTML = '<option value="">Select an editor…</option>' + editors.map(function(name){
+      return '<option value="'+escapeHtml(name)+'">'+escapeHtml(name)+'</option>';
+    }).join('');
+    if(current && editors.indexOf(current) !== -1){
+      sel.value = current;
+      renderEditorDetail(current);
+    }
+  }
+
+  function renderEditorDetail(editorName){
+    var wrap = document.getElementById('dash-editor-detail');
+    if(!wrap) return;
+    if(!editorName){ wrap.innerHTML = ''; return; }
+
+    var monthStart = monthStartStr();
+    var rows = state.entries.filter(function(e){ return e.editor === editorName && e.date >= monthStart; })
+      .sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+
+    var totalHours = rows.reduce(function(s,e){ return s + e.hours; }, 0);
+    var videoCount = new Set(rows.map(function(e){ return e.video; })).size;
+    var totalPauseCount = rows.reduce(function(s,e){ return s + (e.pauseCount||0); }, 0);
+    var totalPausedMin = rows.reduce(function(s,e){ return s + (e.pausedMinutes||0); }, 0);
+
+    var html = '';
+    html += '<div class="video-detail-head">'
+      + '<div class="video-detail-title">' + escapeHtml(editorName) + ' <span style="color:var(--navy-faint);font-weight:600;font-size:13px;">· '+escapeHtml(monthLabel())+'</span></div>'
+      + '<div class="video-detail-total">' + formatHM(totalHours) + ' · ' + videoCount + ' video' + (videoCount===1?'':'s') + '</div>'
+      + '</div>';
+
+    if(totalPauseCount > 0){
+      html += '<div class="editor-row-sub" style="margin-bottom:10px;">'+totalPauseCount+' pause'+(totalPauseCount===1?'':'s')+' this month · '+totalPausedMin+'m total paused</div>';
+    }
+
+    html += '<button type="button" class="switch-link" id="export-editor-btn" data-editor="'+escapeHtml(editorName)+'" style="margin:2px 0 12px;">Export this editor\'s report (CSV)</button>';
+
+    if(rows.length === 0){
+      html += '<div class="empty-state">Nothing logged this month yet.</div>';
+    } else {
+      html += rows.map(function(e){
+        var dateStr = formatDateLabel(e.date);
+        var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
+        return '<div class="vh-row">'
+          + '<div class="vh-date">'+escapeHtml(dateStr)+'</div>'
+          + timeRangeHtml(e)
+          + '<div class="vh-editor" title="'+escapeHtml(e.video)+'">'+videoLabel+'</div>'
+          + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
+          + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
+          + pauseBadgeHtml(e) + holdBadgeHtml(e)
+          + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
+          + '</div>';
+      }).join('');
+    }
+
+    wrap.innerHTML = html;
+  }
+
+  /* ---------- CSV export ---------- */
+  function csvEscape(val){
+    val = val == null ? '' : String(val);
+    if(/[",\n]/.test(val)){ val = '"' + val.replace(/"/g, '""') + '"'; }
+    return val;
+  }
+
+  function toCSV(headers, rows){
+    var lines = [headers.map(csvEscape).join(',')];
+    rows.forEach(function(row){
+      lines.push(headers.map(function(h){ return csvEscape(row[h]); }).join(','));
+    });
+    return lines.join('\r\n');
+  }
+
+  function downloadCSV(filename, csvContent){
+    var blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function pauseReasonsJoined(entry){
+    return (entry.pauses || []).map(function(p){ return p.reason || ''; }).filter(Boolean).join('; ');
+  }
+
+  function exportMonthlyReport(){
+    var monthStart = monthStartStr();
+    var headers = ['Editor','Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Outcome','Outcome Note','Notes'];
+    var rows = state.entries.filter(function(e){ return e.date >= monthStart; })
+      .sort(function(a,b){ return a.editor.localeCompare(b.editor) || a.date.localeCompare(b.date); })
+      .map(function(e){
+        return {
+          Editor: e.editor, Date: e.date, Started: formatTimeOfDay(e.startedAt), Ended: formatTimeOfDay(e.loggedAt),
+          Video: e.video, Project: e.project || '', Stage: e.stage,
+          Hours: e.hours.toFixed(2), Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
+          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '', Outcome: e.outcome || '', 'Outcome Note': e.outcomeNote || '', 'Video Link': e.videoLink || '',
+          Notes: e.notes || ''
+        };
+      });
+    if(rows.length === 0){ window.alert('Nothing logged this month yet.'); return; }
+    downloadCSV('science-street-monthly-report-' + monthStart.slice(0,7) + '.csv', toCSV(headers, rows));
+  }
+
+  function exportEditorReport(editorName){
+    var monthStart = monthStartStr();
+    var headers = ['Date','Started','Ended','Video','Project','Stage','Hours','Pauses','Paused Minutes','Pause Reasons','Held','Hold Reason','Outcome','Outcome Note','Notes'];
+    var rows = state.entries.filter(function(e){ return e.editor === editorName && e.date >= monthStart; })
+      .sort(function(a,b){ return a.date.localeCompare(b.date); })
+      .map(function(e){
+        return {
+          Date: e.date, Started: formatTimeOfDay(e.startedAt), Ended: formatTimeOfDay(e.loggedAt),
+          Video: e.video, Project: e.project || '', Stage: e.stage, Hours: e.hours.toFixed(2),
+          Pauses: e.pauseCount || 0, 'Paused Minutes': e.pausedMinutes || 0,
+          'Pause Reasons': pauseReasonsJoined(e), Held: e.held ? 'Yes' : 'No', 'Hold Reason': e.holdReason || '', Outcome: e.outcome || '', 'Outcome Note': e.outcomeNote || '', 'Video Link': e.videoLink || '',
+          Notes: e.notes || ''
+        };
+      });
+    if(rows.length === 0){ window.alert('Nothing logged this month yet for this editor.'); return; }
+    var safeName = editorName.replace(/[^a-z0-9]+/gi, '-');
+    downloadCSV('science-street-' + safeName + '-' + monthStart.slice(0,7) + '.csv', toCSV(headers, rows));
+  }
+
+  function computeVideoStats(video){
+    var all = state.entries.filter(function(e){ return e.video === video; });
+    var totalHours = all.reduce(function(s,e){ return s + e.hours; }, 0);
+    var touched = new Set(all.map(function(e){ return e.stage; }));
+    var furthestIdx = -1;
+    state.stages.forEach(function(name, i){ if(touched.has(name)) furthestIdx = i; });
+    var contributors = Array.from(new Set(all.map(function(e){ return e.editor; })));
+    var lastLoggedAt = all.reduce(function(m,e){ return e.loggedAt > m ? e.loggedAt : m; }, '');
+    var project = all.length ? all[all.length-1].project : '';
+    return { totalHours: totalHours, touched: touched, furthestIdx: furthestIdx, contributors: contributors, lastLoggedAt: lastLoggedAt, project: project };
+  }
+
+  function computeEditorProgress(name){
+    var mine = state.entries.filter(function(e){ return e.editor === name; });
+    var monthStart = monthStartStr();
+    var monthMine = mine.filter(function(e){ return e.date >= monthStart; });
+    var hoursThisMonth = monthMine.reduce(function(s,e){ return s + e.hours; }, 0);
+    var videosThisMonthCount = new Set(monthMine.map(function(e){ return e.video; })).size;
+
+    var byVideo = {};
+    mine.forEach(function(e){
+      byVideo[e.video] = (byVideo[e.video] || 0) + e.hours;
+    });
+    var videoList = Object.keys(byVideo).map(function(v){
+      return { video: v, hours: byVideo[v] };
+    }).sort(function(a,b){ return b.hours - a.hours; });
+
+    return {
+      name: name,
+      videosThisMonth: videosThisMonthCount,
+      hoursThisMonth: hoursThisMonth,
+      videosAllTime: videoList.length,
+      videoList: videoList
+    };
+  }
+
+  function renderDashboard(){
+    var wrap = document.getElementById('dash-content');
+    if(state.loading){ wrap.innerHTML = '<div class="empty-state">Loading…</div>'; return; }
+
+    var periodStart = state.period === 'today' ? todayStr() : dateMinus(6);
+    var periodEntries = state.entries.filter(function(e){ return e.date >= periodStart; });
+    var periodLabel = state.period === 'today' ? 'touched today' : 'touched this week';
+
+    var videoNames = Array.from(new Set(periodEntries.map(function(e){ return e.video; })));
+    var videoStats = videoNames.map(function(v){
+      var s = computeVideoStats(v);
+      s.video = v;
+      return s;
+    }).sort(function(a,b){ return b.lastLoggedAt.localeCompare(a.lastLoggedAt); });
+
+    var editorNames = Array.from(new Set(periodEntries.map(function(e){ return e.editor; })));
+    var editorStats = editorNames.map(function(name){
+      var mine = periodEntries.filter(function(e){ return e.editor === name; });
+      var hours = mine.reduce(function(s,e){ return s + e.hours; }, 0);
+      var videos = Array.from(new Set(mine.map(function(e){ return e.video; })));
+      return { name: name, hours: hours, count: mine.length, videos: videos };
+    }).sort(function(a,b){ return b.hours - a.hours; });
+
+    var html = '';
+    html += '<div class="card"><div class="card-head">Videos ' + periodLabel + '</div>';
+    if(videoStats.length === 0){
+      html += '<div class="empty-state">No videos touched in this period yet.</div>';
+    } else {
+      html += videoStats.map(function(s){
+        var segs = state.stages.map(function(name, i){
+          var cls = 'seg seg-color-' + stageColorClass(name) + (s.touched.has(name) ? ' on' : '') + (i === s.furthestIdx ? ' current' : '');
+          return '<div class="'+cls+'"></div>';
+        }).join('');
+        var contrib = s.contributors.slice(0,3).join(', ') + (s.contributors.length > 3 ? ' +'+(s.contributors.length-3)+' more' : '');
+        var stageTxt = s.furthestIdx >= 0 ? state.stages[s.furthestIdx] : '—';
+        var videoTitle = escapeHtml(s.video) + (s.project ? ' <span style="color:var(--navy-faint);font-weight:600;font-size:12px;">· '+escapeHtml(s.project)+'</span>' : '');
+        return '<div class="video-row">'
+          + '<div class="video-top"><div class="video-name">'+videoTitle+'</div><div class="video-total">'+formatHM(s.totalHours)+'</div></div>'
+          + '<div class="segbar">'+segs+'</div>'
+          + '<div class="video-meta"><span>'+escapeHtml(stageTxt)+'</span><span>'+escapeHtml(contrib)+'</span></div>'
+          + '</div>';
+      }).join('');
+    }
+    html += '</div>';
+
+    html += '<div class="card"><div class="card-head">By editor — ' + (state.period==='today'?'today':'last 7 days') + '</div>';
+    if(editorStats.length === 0){
+      html += '<div class="empty-state">No takes logged in this period yet.</div>';
+    } else {
+      html += '<div class="editor-grid">' + editorStats.map(function(e){
+        return '<div class="editor-card">'
+          + '<div class="editor-name" title="'+escapeHtml(e.name)+'">'+escapeHtml(e.name)+'</div>'
+          + '<div class="editor-hours">'+formatHM(e.hours)+'</div>'
+          + '<div class="editor-sub">'+e.count+' take'+(e.count===1?'':'s')+'</div>'
+          + '<div class="editor-videos">'+escapeHtml(e.videos.join(', '))+'</div>'
+          + '</div>';
+      }).join('') + '</div>';
+    }
+    html += '</div>';
+
+    var allEditorNames = Array.from(new Set(state.entries.map(function(e){ return e.editor; })));
+    var progress = allEditorNames.map(computeEditorProgress)
+      .sort(function(a,b){ return b.hoursThisMonth - a.hoursThisMonth; });
+
+    html += '<div class="card"><div class="card-head">Editor progress — ' + monthLabel() + '</div>';
+    if(progress.length === 0){
+      html += '<div class="empty-state">No takes logged yet.</div>';
+    } else {
+      html += progress.map(function(p){
+        var expanded = state.expandedEditors.has(p.name);
+        var row = '<div class="editor-row">'
+          + '<div class="editor-row-head" data-toggle-editor="'+escapeHtml(p.name)+'">'
+          +   '<div class="editor-row-name">'+escapeHtml(p.name)+'</div>'
+          +   '<div class="editor-row-stats">'
+          +     '<span class="stat"><b>'+p.videosThisMonth+'</b> video'+(p.videosThisMonth===1?'':'s')+'</span>'
+          +     '<span class="stat amber"><b>'+formatHM(p.hoursThisMonth)+'</b></span>'
+          +     '<span class="chevron">'+(expanded ? '▾' : '▸')+'</span>'
+          +   '</div>'
+          + '</div>';
+        if(expanded){
+          row += '<div class="editor-row-detail">'
+            + '<div class="editor-row-sub">'+p.videosAllTime+' video'+(p.videosAllTime===1?'':'s')+' in the loaded period — time per video (use Look up a video for full history)</div>'
+            + (p.videoList.length === 0 ? '<div class="empty-state">Nothing logged yet.</div>' : p.videoList.map(function(v){
+                return '<div class="ev-row"><span class="ev-video" title="'+escapeHtml(v.video)+'">'+escapeHtml(v.video)+'</span><span class="ev-hours">'+formatHM(v.hours)+'</span></div>';
+              }).join(''))
+            + '</div>';
+        }
+        row += '</div>';
+        return row;
+      }).join('');
+    }
+    html += '</div>';
+
+    wrap.innerHTML = html;
+  }
+
+  /* ---------- live timer UI ---------- */
+  function tickTimer(){
+    if(!state.activeTake) return;
+    var el = document.getElementById('timer-display');
+    if(el){ el.textContent = formatHMS(displayWorkedMs(state.activeTake)); }
+    if(state.activeTake.paused && state.activeTake.pausedAt){
+      var pel = document.getElementById('pause-timer-display');
+      if(pel){ pel.textContent = formatHMS(Date.now() - new Date(state.activeTake.pausedAt).getTime()); }
+    }
+  }
+
+  function enterActiveTakeUI(){
+    document.getElementById('take-active').style.display = 'block';
+    var at = state.activeTake;
+    var priorHrs = at.resumedFromHold ? resumedPriorHours(at) : 0;
+    var baseNote = priorHrs ? (' <span style="font-weight:500;color:var(--navy-faint);">(includes '+formatHM(priorHrs)+' already logged on this video)</span>') : '';
+    var plan = at.planId ? state.plans[at.planId] : null;
+    var dueNote = plan ? (' <span style="font-weight:500;color:var(--navy-faint);">· due '+escapeHtml(planDueText(plan))+'</span>') : '';
+    document.getElementById('active-take-summary').innerHTML =
+      '<b>'+escapeHtml(at.video)+'</b> · '+escapeHtml(at.project)+' · '+escapeHtml(at.stage)+dueNote+baseNote+rawPathHtml(plan);
+    document.getElementById('f-notes-active').value = at.notes || '';
+    document.getElementById('pause-banner').style.display = at.paused ? 'block' : 'none';
+    document.getElementById('pause-btn').style.display = at.paused ? 'none' : 'inline-block';
+    document.getElementById('pause-reason-input').value = at.pauseReason || '';
+    tickTimer();
+    if(state.timerInterval){ clearInterval(state.timerInterval); }
+    state.timerInterval = setInterval(tickTimer, 1000);
+    renderPlanList();
+  }
+
+  function exitActiveTakeUI(){
+    if(state.timerInterval){ clearInterval(state.timerInterval); state.timerInterval = null; }
+    document.getElementById('take-active').style.display = 'none';
+    renderPlanList();
+  }
+
+  function pauseTake(){
+    if(!state.activeTake || state.activeTake.paused) return;
+    var editor = state.identity.name;
+    var take = Object.assign({}, state.activeTake);
+    take.notes = document.getElementById('f-notes-active').value.trim();
+    take.paused = true;
+    take.pausedAt = new Date().toISOString();
+    take.pauseReason = '';
+    withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
+      if(res && res.error){ return; }
+      state.activeTake = take;
+      state.allActiveTakes[editor] = take;
+      enterActiveTakeUI();
+    });
+  }
+
+  function resumeTake(){
+    if(!state.activeTake || !state.activeTake.paused) return;
+    var editor = state.identity.name;
+    var reasonInput = document.getElementById('pause-reason-input');
+    var reason = reasonInput ? reasonInput.value.trim() : '';
+    var take = Object.assign({}, state.activeTake);
+    var pausedAtMs = new Date(take.pausedAt).getTime();
+    var nowIso = new Date().toISOString();
+    var pauseLog = (take.pauseLog || []).concat([{
+      pausedAt: take.pausedAt, resumedAt: nowIso, reason: reason, durationMs: Date.now() - pausedAtMs
+    }]);
+    take.paused = false;
+    take.pausedAt = null;
+    take.pauseReason = '';
+    take.pauseLog = pauseLog;
+    withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
+      if(res && res.error){ return; }
+      state.activeTake = take;
+      state.allActiveTakes[editor] = take;
+      enterActiveTakeUI();
+    });
+  }
+
+  /* ---------- manage editors (manager dashboard) ---------- */
+  function renderEditorManageList(){
+    var wrap = document.getElementById('editor-manage-list');
+    if(!wrap || !state.credentials) return;
+    var names = Object.keys(state.credentials.editors).sort();
+    populateAssignEditorSelect();
+    renderLeadManageList();
+    sbFill();
+    var sk = document.getElementById('sync-key-row');
+    if(sk){
+      sk.innerHTML = state.credentials.syncKey
+        ? '<div class="raw-path"><span class="raw-lab">Production Plan sheet key</span><code dir="ltr">' + escapeHtml(state.credentials.syncKey) + '</code><button type="button" class="raw-copy" data-copy-raw="' + escapeHtml(state.credentials.syncKey) + '">Copy</button></div>'
+          + '<div style="margin-top:4px;">Paste it once in the sheet: Tracker Sync › Set tracker sync key. Keep it private, like a password.</div>'
+        : '';
+    }
+    wrap.innerHTML = names.map(function(name){
+      var isConfirm = state.confirmDeleteEditor === name;
+      var isResetting = state.resettingEditor === name;
+      var isRenaming = state.renamingEditor === name;
+      var row = '<div class="stage-manage-row"><div class="editor-manage-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</div>';
+      if(isRenaming){
+        row += '<input type="text" class="reset-pw-input" id="rename-editor-input" dir="auto" value="'+escapeHtml(name)+'" data-editor="'+escapeHtml(name)+'">'
+          + '<button type="button" class="btn-primary btn-small" data-confirm-rename="'+escapeHtml(name)+'"'+(state.renameBusy ? ' disabled' : '')+'>'+(state.renameBusy ? 'Renaming…' : 'Save')+'</button>'
+          + (state.renameBusy ? '' : '<button type="button" class="switch-link" data-cancel-rename="1">Cancel</button>');
+      } else if(isResetting){
+        row += '<input type="text" class="reset-pw-input" id="reset-pw-input" placeholder="New password" data-editor="'+escapeHtml(name)+'">'
+          + '<button type="button" class="btn-primary btn-small" data-confirm-reset="'+escapeHtml(name)+'">Save</button>'
+          + '<button type="button" class="switch-link" data-cancel-reset="'+escapeHtml(name)+'">Cancel</button>';
+      } else {
+        row += '<button type="button" class="switch-link" data-ask-rename="'+escapeHtml(name)+'">rename</button>'
+          + '<button type="button" class="switch-link" data-ask-reset="'+escapeHtml(name)+'">reset password</button>';
+        if(isConfirm){
+          row += '<button type="button" class="stage-delete confirm" data-confirm-delete-editor="'+escapeHtml(name)+'">Confirm?</button>';
+        } else {
+          row += '<button type="button" class="stage-delete" data-ask-delete-editor="'+escapeHtml(name)+'" aria-label="Remove editor">×</button>';
+        }
+      }
+      row += '</div>';
+      return row;
+    }).join('');
+  }
+
+  function setEditorManageError(msg){
+    var el = document.getElementById('editor-manage-error');
+    if(el){ el.textContent = msg || ''; }
+  }
+
+  function askDeleteEditor(name){
+    state.confirmDeleteEditor = name;
+    renderEditorManageList();
+  }
+
+  function performDeleteEditor(name){
+    setEditorManageError('');
+    var updated = JSON.parse(JSON.stringify(state.credentials));
+    delete updated.editors[name];
+    state.confirmDeleteEditor = null;
+    persistCredentials(updated).then(function(res){
+      if(res && res.error){ setEditorManageError("Couldn't remove — try again."); return; }
+      state.credentials = updated;
+      renderEditorManageList();
+    });
+  }
+
+  function askResetEditor(name){
+    setEditorManageError('');
+    state.resettingEditor = name;
+    renderEditorManageList();
+    setTimeout(function(){
+      var el = document.getElementById('reset-pw-input');
+      if(el){ el.focus(); }
+    }, 0);
+  }
+
+  function cancelResetEditor(){
+    state.resettingEditor = null;
+    renderEditorManageList();
+  }
+
+  function confirmResetEditor(name){
+    var input = document.getElementById('reset-pw-input');
+    var pw = input ? input.value.trim() : '';
+    if(!pw || pw.length < 4){ setEditorManageError('New password must be at least 4 characters.'); return; }
+    setEditorManageError('');
+    var updated = JSON.parse(JSON.stringify(state.credentials));
+    updated.editors[name] = pw;
+    state.resettingEditor = null;
+    persistCredentials(updated).then(function(res){
+      if(res && res.error){ setEditorManageError("Couldn't save — try again."); return; }
+      state.credentials = updated;
+      renderEditorManageList();
+    });
+  }
+
+  /* Renaming an editor moves everything to the new name: login, past takes, plans/tasks, running-take locks.
+     The old name is remembered in credentials.renamed so devices logged in under it switch over, and the
+     dashboard and the Production Plan sync follow it too. */
+  function askRenameEditor(name){
+    setEditorManageError('');
+    state.renamingEditor = name; state.resettingEditor = null; state.confirmDeleteEditor = null;
+    renderEditorManageList();
+    setTimeout(function(){ var el = document.getElementById('rename-editor-input'); if(el){ el.focus(); el.select(); } }, 0);
+  }
+
+  function cancelRenameEditor(){
+    if(state.renameBusy){ return; }
+    state.renamingEditor = null;
+    renderEditorManageList();
+  }
+
+  function renameEditorDocs(collection, oldName, newName){
+    return db.collection(collection).where('editor', '==', oldName).get().then(function(snap){
+      var docs = [];
+      snap.forEach(function(d){ docs.push(d.ref); });
+      var chunks = [];
+      for(var i = 0; i < docs.length; i += 400){ chunks.push(docs.slice(i, i + 400)); }
+      return chunks.reduce(function(p, chunk){
+        return p.then(function(){
+          var batch = db.batch();
+          chunk.forEach(function(ref){ batch.update(ref, { editor: newName }); });
+          return batch.commit();
+        });
+      }, Promise.resolve()).then(function(){ return docs.length; });
+    });
+  }
+
+  function confirmRenameEditor(oldName){
+    var input = document.getElementById('rename-editor-input');
+    var newName = input ? input.value.trim().replace(/\s+/g, ' ') : '';
+    if(!newName){ setEditorManageError('Enter the new name.'); return; }
+    if(newName === oldName){ cancelRenameEditor(); return; }
+    if(newName.indexOf('/') !== -1){ setEditorManageError('The name can\'t contain a slash (/).'); return; }
+    if(state.credentials.editors.hasOwnProperty(newName)){ setEditorManageError('An editor called "' + newName + '" already exists.'); return; }
+    if(state.allActiveTakes && state.allActiveTakes[oldName]){ setEditorManageError(oldName + ' has a take running. Ask them to finish or hold it first, then rename.'); return; }
+    setEditorManageError('Renaming ' + oldName + ' to ' + newName + '… keep this page open.');
+    state.renameBusy = true; renderEditorManageList();
+    var counts = {};
+    renameEditorDocs('entries', oldName, newName).then(function(n){ counts.entries = n; return renameEditorDocs('plans', oldName, newName); })
+      .then(function(n){ counts.plans = n; return renameEditorDocs('locks', oldName, newName); })
+      .then(function(){
+        var updated = JSON.parse(JSON.stringify(state.credentials));
+        updated.editors[newName] = updated.editors[oldName];
+        delete updated.editors[oldName];
+        updated.renamed = updated.renamed || {};
+        Object.keys(updated.renamed).forEach(function(k){ if(updated.renamed[k] === oldName){ updated.renamed[k] = newName; } });
+        updated.renamed[oldName] = newName;
+        delete updated.renamed[newName];
+        return persistCredentials(updated).then(function(res){
+          if(res && res.error){ throw new Error(res.error); }
+          state.credentials = updated;
+          // devices signed in under the old name keep working under the new one
+          return db.collection('sessions').where('name', '==', oldName).get().then(function(snap){
+            var b = db.batch(), n = 0;
+            snap.forEach(function(d){ b.update(d.ref, { name: newName }); n++; });
+            return n ? b.commit() : null;
+          }).catch(function(){});
+        });
+      })
+      .then(function(){
+        // keep this browser's lists in step without waiting for a reload
+        (state.entries || []).forEach(function(e){ if(e.editor === oldName){ e.editor = newName; } });
+        Object.keys(state.plans || {}).forEach(function(k){ if(state.plans[k].editor === oldName){ state.plans[k].editor = newName; } });
+        state.renameBusy = false; state.renamingEditor = null;
+        populateRoster();
+        renderEditorManageList();
+        setEditorManageError('Renamed to ' + newName + ' · ' + (counts.entries || 0) + ' takes and ' + (counts.plans || 0) + ' tasks moved. Their password stays the same.');
+      })
+      .catch(function(err){
+        state.renameBusy = false;
+        renderEditorManageList();
+        setEditorManageError("Couldn't finish renaming (" + String(err && err.message || err).slice(0, 120) + "). Click rename again with the same new name to finish.");
+      });
+  }
+
+  /* ---------- send a finished task back for edits ----------
+     Same records as the Control Room's "Send back for edits": the round is saved on the ORIGINAL task
+     (plans/{id}.edits[]) and a new fix task is added to the editor's plan (revisionOf = original id).
+       his fault      -> the original task loses points (minor / major, KPI settings); late fixes cost more
+       not his fault  -> the original keeps its score; the fix is a normal new task */
+  var SB_REASONS = {
+    editor: ['Mistakes / typos', 'Sync or audio problem', 'Wrong or missing asset', "Didn't follow the brief or style guide", 'Export / technical problem', 'Other'],
+    other: ['Script or content changed', 'Client or manager request', 'Assets came late or wrong', 'Style or direction changed', 'Other']
+  };
+  state.sbDone = {};
+  function sbPoints(){
+    if(state.sbPts){ return Promise.resolve(state.sbPts); }
+    return Promise.resolve().then(function(){ return db.collection('dash_settings').doc('kpi').get(); }).then(function(d){
+      var k = d.exists ? d.data() : {};
+      state.sbPts = { minor: Number(k.editMinor) || 10, major: Number(k.editMajor) || 25 };
+      return state.sbPts;
+    }).catch(function(){ state.sbPts = { minor: 10, major: 25 }; return state.sbPts; });
+  }
+  function sbFill(){
+    var sel = document.getElementById('sb-editor');
+    if(!sel || !state.credentials) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">All editors</option>' + Object.keys(state.credentials.editors).sort().map(function(n){ return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
+    sel.value = cur;
+  }
+  function sbLoad(){
+    var since = new Date(); since.setDate(since.getDate() - 30);
+    var list = document.getElementById('sb-list');
+    list.innerHTML = '<div class="empty-state">Loading…</div>';
+    db.collection('plans').where('doneDate', '>=', todayStr(since)).get().then(function(snap){
+      state.sbDone = {};
+      snap.forEach(function(d){ var x = d.data(); x.id = d.id; if(x.status === 'done'){ state.sbDone[x.id] = x; } });
+      sbRender();
+    }).catch(function(err){ list.innerHTML = '<div class="empty-state">' + escapeHtml(planErrorText(err, 'load finished tasks')) + '</div>'; });
+  }
+  function sbRender(){
+    var list = document.getElementById('sb-list');
+    var ed = document.getElementById('sb-editor').value, q = document.getElementById('sb-search').value.trim().toLowerCase();
+    var rows = Object.keys(state.sbDone).map(function(k){ return state.sbDone[k]; })
+      .filter(function(p){ return (!ed || p.editor === ed) && (!q || String(p.video || '').toLowerCase().indexOf(q) !== -1); })
+      .sort(function(a, b){ return String(b.doneAt || '').localeCompare(String(a.doneAt || '')); });
+    if(!rows.length){ list.innerHTML = '<div class="empty-state">No finished tasks match.</div>'; return; }
+    list.innerHTML = rows.slice(0, 150).map(function(p){
+      var rounds = Array.isArray(p.edits) ? p.edits.length : 0;
+      return '<div class="sb-row"><span class="grow"><b>' + escapeHtml(p.video) + '</b> <span class="muted">' + escapeHtml(p.stage || '') + ' · ' + escapeHtml(p.editor) + ' · finished ' + escapeHtml(formatDateLabel(String(p.doneAt || p.doneDate || '').slice(0, 10))) + '</span>'
+        + (p.revisionOf ? ' <span class="plan-flag late">fix round ' + escapeHtml(String(p.round || '')) + '</span>' : '')
+        + (rounds ? ' <span class="plan-flag info">' + rounds + ' edit round' + (rounds > 1 ? 's' : '') + '</span>' : '') + '</span>'
+        + '<button type="button" class="btn-primary btn-small" data-sendback="' + escapeHtml(p.id) + '">Send back</button></div>';
+    }).join('') + (rows.length > 150 ? '<div class="muted">Showing the 150 most recent. Search or pick an editor to narrow it.</div>' : '');
+  }
+  function sbOpen(id){
+    var p = state.sbDone[id] || state.plans[id];
+    if(!p){ return; }
+    sbPoints().then(function(pts){
+      var t = new Date(); t.setDate(t.getDate() + 1);
+      var opts = function(k){ return SB_REASONS[k].map(function(r){ return '<option>' + escapeHtml(r) + '</option>'; }).join(''); };
+      document.getElementById('sb-box').innerHTML =
+        '<div class="card-head" id="sb-title">Send back for edits</div>'
+        + '<div class="muted" style="margin-bottom:12px;"><b>' + escapeHtml(p.video) + '</b> · ' + escapeHtml(p.stage || '') + ' · ' + escapeHtml(p.editor) + '</div>'
+        + '<form id="sb-form" data-id="' + escapeHtml(p.id) + '">'
+        + '<fieldset><legend>Whose fault?</legend>'
+        + '<label><input type="radio" name="sb-fault" value="editor" checked> His fault <span class="muted">(mistakes: counts against his KPI)</span></label>'
+        + '<label><input type="radio" name="sb-fault" value="other"> Not his fault <span class="muted">(changes, client, assets: no points off)</span></label></fieldset>'
+        + '<fieldset id="sb-sev"><legend>How big?</legend>'
+        + '<label><input type="radio" name="sb-sev" value="minor" checked> Minor <span class="muted">(−' + pts.minor + ' pts)</span></label>'
+        + '<label><input type="radio" name="sb-sev" value="major"> Major <span class="muted">(−' + pts.major + ' pts)</span></label></fieldset>'
+        + '<div class="field"><label for="sb-reason">Reason</label><select id="sb-reason">' + opts('editor') + '</select></div>'
+        + '<div class="field"><label for="sb-note">Notes for the editor</label><textarea id="sb-note" dir="auto" placeholder="What needs fixing (timecodes, Frame.io link…)"></textarea></div>'
+        + '<div class="row2"><div class="field"><label for="sb-date">Fix due date</label><input type="date" id="sb-date" value="' + todayStr(t) + '"></div>'
+        + '<div class="field"><label for="sb-time">Time (optional)</label><input type="time" id="sb-time"></div></div>'
+        + '<div class="field"><label for="sb-prio">Priority</label><select id="sb-prio"><option value="high">High</option><option value="normal" selected>Normal</option><option value="low">Low</option></select></div>'
+        + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><button type="submit" class="btn-primary btn-small">Send back</button><button type="button" class="switch-link" data-sb-close="1">Cancel</button><span class="form-error" id="sb-msg"></span></div>'
+        + '</form>';
+      document.getElementById('sb-modal').style.display = 'flex';
+      state.sbReasonHtml = { editor: opts('editor'), other: opts('other') };
+      document.getElementById('sb-note').focus();
+    });
+  }
+  function sbClose(){ document.getElementById('sb-modal').style.display = 'none'; }
+  function sbSend(form){
+    var id = form.getAttribute('data-id');
+    var p = state.sbDone[id] || state.plans[id];
+    if(!p){ return; }
+    var fault = form.querySelector('[name=sb-fault]:checked').value;
+    var severity = fault === 'editor' ? form.querySelector('[name=sb-sev]:checked').value : '';
+    var reason = document.getElementById('sb-reason').value, note = document.getElementById('sb-note').value.trim();
+    var due = document.getElementById('sb-date').value, time = document.getElementById('sb-time').value || '';
+    var msg = document.getElementById('sb-msg');
+    if(!due){ msg.textContent = 'Pick a due date for the fix.'; return; }
+    var rootId = p.revisionOf || p.id;
+    var btn = form.querySelector('[type=submit]'); btn.disabled = true; msg.textContent = 'Sending…';
+    var rootRef = db.collection('plans').doc(rootId);
+    rootRef.get().then(function(rd){
+      var root = rd.exists ? rd.data() : p;
+      var edits = Array.isArray(root.edits) ? root.edits.slice() : [];
+      var round = edits.length + 1, fixId = uid(), now = new Date().toISOString();
+      var fix = {
+        id: fixId, editor: p.editor, date: todayStr(), dueDate: due, video: p.video, project: p.project || '', stage: p.stage || '',
+        notes: 'Edits round ' + round + ': ' + reason + (note ? ' — ' + note : ''), priority: document.getElementById('sb-prio').value,
+        deadline: time, addedMidDay: false, assignedBy: state.identity.name, createdAt: now, status: 'todo', heldReason: '',
+        doneAt: '', doneDate: '', syncPending: false, needsEditing: true, revisionOf: rootId, round: round,
+        fault: fault, severity: severity, editReason: reason, editNote: note, sentBy: state.identity.name
+      };
+      if(p.rawPath){ fix.rawPath = p.rawPath; }
+      edits.push({ round: round, fault: fault, severity: severity, reason: reason, note: note, at: Date.now(), by: state.identity.name, fixId: fixId, fromId: p.id });
+      return db.collection('plans').doc(fixId).set(fix).then(function(){ return rootRef.set({ edits: edits }, { merge: true }); }).then(function(){ return fix; });
+    }).then(function(fix){
+      if(state.sbDone[rootId]){ state.sbDone[rootId].edits = (state.sbDone[rootId].edits || []).concat([{ round: fix.round }]); }
+      sbClose(); sbRender();
+      var m = document.getElementById('sb-list'); if(m && m.firstChild){ /* keep list */ }
+      alertToast('Sent back to ' + fix.editor + ' (round ' + fix.round + ', ' + (fix.fault === 'editor' ? 'his fault · ' + fix.severity : 'not his fault') + ').');
+    }).catch(function(err){ btn.disabled = false; msg.textContent = planErrorText(err, 'send it back'); });
+  }
+  function alertToast(text){
+    var t = document.getElementById('sb-toast');
+    if(!t){ t = document.createElement('div'); t.id = 'sb-toast'; t.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:130;background:var(--navy);color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 3px 0 rgba(0,0,0,.2)'; document.body.appendChild(t); }
+    t.textContent = text; t.style.display = 'block';
+    clearTimeout(state.toastT); state.toastT = setTimeout(function(){ t.style.display = 'none'; }, 3500);
+  }
+
+  /* ---------- leads (manager logins) ---------- */
+  function setLeadError(msg){ var el = document.getElementById('lead-manage-error'); if(el){ el.textContent = msg || ''; } }
+  function renderLeadManageList(){
+    var wrap = document.getElementById('lead-manage-list');
+    if(!wrap || !state.credentials || !state.credentials.managers) return;
+    var names = [MANAGER_NAME].concat(Object.keys(state.credentials.managers).sort());
+    wrap.innerHTML = names.map(function(name){
+      var main = name === MANAGER_NAME;
+      var row = '<div class="stage-manage-row"><div class="editor-manage-name">' + escapeHtml(name) + (main ? ' <span class="plan-count">· main manager</span>' : '') + (state.identity && state.identity.name === name ? ' <span class="plan-count">· you</span>' : '') + '</div>';
+      if(state.resettingLead === name){
+        row += '<input type="text" class="reset-pw-input" id="reset-lead-input" placeholder="New code">'
+          + '<button type="button" class="btn-primary btn-small" data-confirm-lead-reset="' + escapeHtml(name) + '">Save</button>'
+          + '<button type="button" class="switch-link" data-cancel-lead-reset="1">Cancel</button>';
+      } else {
+        row += '<button type="button" class="switch-link" data-ask-lead-reset="' + escapeHtml(name) + '">new code</button>';
+        if(!main){
+          row += state.confirmDeleteLead === name
+            ? '<button type="button" class="stage-delete confirm" data-confirm-delete-lead="' + escapeHtml(name) + '">Confirm?</button>'
+            : '<button type="button" class="stage-delete" data-ask-delete-lead="' + escapeHtml(name) + '" aria-label="Remove lead">×</button>';
+        }
+      }
+      return row + '</div>';
+    }).join('');
+  }
+  function saveLeads(mutate, okMsg){
+    var updated = JSON.parse(JSON.stringify(state.credentials));
+    updated.managers = updated.managers || {};
+    mutate(updated);
+    return persistCredentials(updated).then(function(res){
+      if(res && res.error){ setLeadError("Couldn't save — try again."); return; }
+      state.credentials = updated; state.resettingLead = null; state.confirmDeleteLead = null;
+      setLeadError(okMsg || ''); renderLeadManageList(); populateRoster();
+    });
+  }
+  function addLead(){
+    var n = document.getElementById('new-lead-name-input'), c = document.getElementById('new-lead-code-input');
+    var name = n.value.trim().replace(/\s+/g, ' '), code = c.value.trim();
+    if(!name){ setLeadError('Enter the lead\'s name.'); return; }
+    if(name === MANAGER_NAME || (state.credentials.managers || {}).hasOwnProperty(name)){ setLeadError('There is already a lead called ' + name + '.'); return; }
+    if(state.credentials.editors.hasOwnProperty(name)){ setLeadError(name + ' is an editor. Use a different name for their lead login.'); return; }
+    if(code.length < 4){ setLeadError('The code must be at least 4 characters.'); return; }
+    saveLeads(function(u){ u.managers[name] = code; }, 'Added ' + name + '. They log in under “I\'m a manager / lead”.').then(function(){ n.value = ''; c.value = ''; });
+  }
+  function resetLead(name){
+    var el = document.getElementById('reset-lead-input'), code = el ? el.value.trim() : '';
+    if(code.length < 4){ setLeadError('The code must be at least 4 characters.'); return; }
+    saveLeads(function(u){ if(name === MANAGER_NAME){ u.managerCode = code; } else { u.managers[name] = code; } }, 'New code saved for ' + name + '.');
+  }
+  function removeLead(name){
+    saveLeads(function(u){ delete u.managers[name]; }, name + ' removed. Their login stops working right away.');
+  }
+
+  function confirmAddEditor(){
+    var nameInput = document.getElementById('new-editor-name-input');
+    var pwInput = document.getElementById('new-editor-password-input');
+    var name = nameInput.value.trim();
+    var pw = pwInput.value.trim();
+    if(!name){ setEditorManageError('Enter a name for the new editor.'); nameInput.focus(); return; }
+    if(state.credentials.editors.hasOwnProperty(name)){ setEditorManageError('That editor already exists.'); return; }
+    if(!pw || pw.length < 4){ setEditorManageError('Password must be at least 4 characters.'); pwInput.focus(); return; }
+    setEditorManageError('');
+    var updated = JSON.parse(JSON.stringify(state.credentials));
+    updated.editors[name] = pw;
+    persistCredentials(updated).then(function(res){
+      if(res && res.error){ setEditorManageError("Couldn't add — try again."); return; }
+      state.credentials = updated;
+      nameInput.value = '';
+      pwInput.value = '';
+      renderEditorManageList();
+    });
+  }
+
+
+  /* ---------- actions ---------- */
+  /* ---------- daily plan ---------- */
+  var PRIORITY_RANK = { high: 0, normal: 1, low: 2 };
+  var PRIORITY_LABEL = { high: 'High', normal: 'Normal', low: 'Low' };
+  var PRIORITY_COLOR = { high: 'red', normal: 'indigo', low: 'gray' };
+
+  function savePlanDoc(plan){
+    return db.collection('plans').doc(plan.id).set(plan)
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
+  }
+
+  function patchPlanDoc(id, fields){
+    return db.collection('plans').doc(id).set(fields, { merge: true })
+      .then(function(){ return { ok: true }; })
+      .catch(function(err){ return { error: String(err) }; });
+  }
+
+  function planDue(plan){ return plan.dueDate || plan.date; }
+
+  function planErrorText(err, verb){
+    var raw = String(err && err.message ? err.message : err).replace(/^(Error:\s*)+/, '');
+    console.error('Plan operation failed:', err);
+    if(/quota|resource-exhausted/i.test(raw)){
+      return "Can't " + verb + " — today's free database quota is used up. Try again after it resets (around 10:00 Cairo time).";
+    }
+    if(/permission/i.test(raw)){
+      return "Can't " + verb + " — the Firestore rules still need the plans collection added.";
+    }
+    return "Couldn't " + verb + " — " + raw.slice(0, 180);
+  }
+
+  function planDeadlineMs(plan){
+    if(!plan.deadline){ return null; }
+    var t = new Date(planDue(plan) + 'T' + plan.deadline).getTime();
+    return isNaN(t) ? null : t;
+  }
+
+  function planIsOverdue(plan, nowMs){
+    if(plan.status !== 'todo'){ return false; }
+    var ms = planDeadlineMs(plan);
+    if(ms != null){ return nowMs > ms; }
+    return planDue(plan) < todayStr();
+  }
+
+  function planDueText(plan){
+    var due = planDue(plan);
+    var today = todayStr();
+    var t = new Date();
+    t.setDate(t.getDate() + 1);
+    var dayTxt = due === today ? 'today' : (due === todayStr(t) ? 'tomorrow' : formatDateLabel(due));
+    return dayTxt + (plan.deadline ? ' ' + plan.deadline : '');
+  }
+
+  function sortPlans(a, b){
+    var pa = PRIORITY_RANK[a.priority] != null ? PRIORITY_RANK[a.priority] : 1;
+    var pb = PRIORITY_RANK[b.priority] != null ? PRIORITY_RANK[b.priority] : 1;
+    if(pa !== pb){ return pa - pb; }
+    var ka = planDue(a) + ' ' + (a.deadline || '99:99');
+    var kb = planDue(b) + ' ' + (b.deadline || '99:99');
+    if(ka !== kb){ return ka < kb ? -1 : 1; }
+    return (a.createdAt || '').localeCompare(b.createdAt || '');
+  }
+
+  function allPlans(){
+    return Object.keys(state.plans).map(function(k){ return state.plans[k]; });
+  }
+
+  function editorHasActivityToday(editor){
+    if(state.activeTake){ return true; }
+    var today = todayStr();
+    return state.entries.some(function(e){ return e.editor === editor && e.date === today; });
+  }
+
+  function planFlagsHtml(plan, nowMs){
+    var flags = '';
+    if(plan.assignedBy){ flags += ' <span class="plan-flag assigned">assigned by ' + escapeHtml(plan.assignedBy) + '</span>'; }
+    if(plan.addedMidDay){ flags += ' <span class="plan-flag mid">added mid-day</span>'; }
+    if(plan.status === 'todo' && plan.needsEditing){ flags += ' <span class="plan-flag late">✎ needs editing</span>'; }
+    if(plan.status === 'done'){
+      var doneTxt = plan.doneAt ? ('done ' + formatTimeOfDay(plan.doneAt)) : 'done';
+      var dl = planDeadlineMs(plan);
+      var onTime = true;
+      if(plan.doneAt){
+        onTime = dl != null ? (new Date(plan.doneAt).getTime() <= dl) : (todayStr(new Date(plan.doneAt)) <= planDue(plan));
+      }
+      flags += ' <span class="plan-flag ' + (onTime ? 'ok' : 'late') + '">' + doneTxt + (onTime ? ' · on time' : ' · late') + '</span>';
+    } else if(plan.status === 'dropped'){
+      flags += ' <span class="plan-flag info">removed</span>';
+    } else if(planIsOverdue(plan, nowMs)){
+      flags += ' <span class="plan-flag late">overdue' + (planDue(plan) < todayStr() ? ' · was due ' + escapeHtml(planDueText(plan)) : '') + '</span>';
+    }
+    if(plan.status === 'todo' && plan.heldReason){
+      flags += ' <span class="plan-flag info">📌 on hold — ' + escapeHtml(plan.heldReason) + '</span>';
+    }
+    return flags;
+  }
+
+  /* where the raw footage for this video is (plan.rawPath, from the Production Plan's "Raw data" column) */
+  function rawPathHtml(plan){
+    if(!plan || !plan.rawPath){ return ''; }
+    return '<div class="raw-path"><span class="raw-lab">Raw data</span><code dir="ltr" title="' + escapeHtml(plan.rawPath) + '">' + escapeHtml(plan.rawPath) + '</code>'
+      + '<button type="button" class="raw-copy" data-copy-raw="' + escapeHtml(plan.rawPath) + '">Copy</button></div>';
+  }
+
+  function planSubHtml(plan, nowMs){
+    var parts = [escapeHtml(plan.project || ''), escapeHtml(plan.stage || ''), 'due ' + escapeHtml(planDueText(plan))];
+    return parts.filter(Boolean).join(' · ') + planFlagsHtml(plan, nowMs);
+  }
+
+  function planPriorityTag(plan){
+    var pr = PRIORITY_LABEL[plan.priority] ? plan.priority : 'normal';
+    return '<div class="feed-stage tag-color-' + PRIORITY_COLOR[pr] + '">' + PRIORITY_LABEL[pr] + '</div>';
+  }
+
+  function dropButtonsHtml(plan){
+    return state.confirmDropPlan === plan.id
+      ? '<button type="button" class="stage-delete confirm" data-confirm-drop-plan="' + escapeHtml(plan.id) + '">Remove?</button>'
+      : '<button type="button" class="stage-delete" data-ask-drop-plan="' + escapeHtml(plan.id) + '" aria-label="Remove task">×</button>';
+  }
+
+  function renderPlanList(){
+    var wrap = document.getElementById('plan-list');
+    if(!wrap || !state.identity || state.identity.role !== 'editor'){ return; }
+    var me = state.identity.name;
+    var today = todayStr();
+    var nowMs = Date.now();
+    var mine = allPlans().filter(function(p){ return p.editor === me; });
+    var open = mine.filter(function(p){ return p.status === 'todo'; }).sort(sortPlans);
+    var dueNow = open.filter(function(p){ return planDue(p) <= today; });
+    var upcoming = open.filter(function(p){ return planDue(p) > today; });
+    var done = mine.filter(function(p){
+      return p.status === 'done' && p.doneAt && todayStr(new Date(p.doneAt)) === today;
+    }).sort(function(a, b){ return (a.doneAt || '').localeCompare(b.doneAt || ''); });
+
+    if(open.length === 0 && done.length === 0){
+      wrap.innerHTML = '<div class="empty-state">Nothing planned yet — add your episodes below.</div>';
+      return;
+    }
+
+    function rowHtml(p){
+      var isActive = state.activeTake && state.activeTake.planId === p.id;
+      var actions;
+      if(isActive){
+        actions = '<span class="plan-flag ok">● working now</span>';
+      } else {
+        actions = '<button type="button" class="btn-primary btn-small" data-start-plan="' + escapeHtml(p.id) + '">Start ▸</button>'
+          + (p.assignedBy ? '' : dropButtonsHtml(p));
+      }
+      return '<div class="plan-row">'
+        + planPriorityTag(p)
+        + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
+        + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div>'
+        + (p.notes ? '<div class="plan-sub" style="color:var(--navy-soft);">' + escapeHtml(p.notes) + '</div>' : '')
+        + rawPathHtml(p)
+        + '</div>'
+        + actions
+        + '</div>';
+    }
+
+    var html = '';
+    if(dueNow.length){
+      html += '<div class="plan-group">Due today or overdue <small>' + dueNow.length + '</small></div>' + dueNow.map(rowHtml).join('');
+    }
+    if(upcoming.length){
+      html += '<div class="plan-group">Upcoming <small>' + upcoming.length + '</small></div>' + upcoming.map(rowHtml).join('');
+    }
+    if(done.length){
+      html += '<div class="plan-group">Finished today <small>' + done.length + '</small></div>';
+      html += done.map(function(p){
+        return '<div class="plan-row done">'
+          + planPriorityTag(p)
+          + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
+          + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div></div>'
+          + '</div>';
+      }).join('');
+    }
+    wrap.innerHTML = html;
+  }
+
+  function renderPlansPanel(){
+    var wrap = document.getElementById('plans-overview');
+    if(!wrap){ return; }
+    var today = todayStr();
+    var nowMs = Date.now();
+    var relevant = allPlans().filter(function(p){
+      if(p.status === 'todo'){ return true; }
+      if(p.status === 'done'){ return p.doneAt && todayStr(new Date(p.doneAt)) === today; }
+      return p.droppedAt && todayStr(new Date(p.droppedAt)) === today;
+    });
+    if(relevant.length === 0){
+      wrap.innerHTML = '<div class="empty-state">No open plans or tasks right now.</div>';
+      return;
+    }
+    var byEditor = {};
+    relevant.forEach(function(p){
+      if(!byEditor[p.editor]){ byEditor[p.editor] = []; }
+      byEditor[p.editor].push(p);
+    });
+    var rank = { todo: 0, done: 1, dropped: 2 };
+    wrap.innerHTML = Object.keys(byEditor).sort().map(function(name){
+      var items = byEditor[name].sort(function(a, b){
+        if(rank[a.status] !== rank[b.status]){ return rank[a.status] - rank[b.status]; }
+        return sortPlans(a, b);
+      });
+      var counted = items.filter(function(p){ return p.status !== 'dropped'; });
+      var doneCount = counted.filter(function(p){ return p.status === 'done'; }).length;
+      var overdue = counted.filter(function(p){ return planIsOverdue(p, nowMs); }).length;
+      var head = '<div class="plan-group">' + escapeHtml(name)
+        + '<small>' + doneCount + ' of ' + counted.length + ' done' + (overdue ? ' · ' + overdue + ' overdue' : '') + '</small></div>';
+      var rows = items.map(function(p){
+        var live = state.allActiveTakes[name] && state.allActiveTakes[name].planId === p.id
+          ? '<span class="plan-flag ok">● working now</span>' : '';
+        var removable = p.status === 'todo' && p.assignedBy && !live ? dropButtonsHtml(p) : '';
+        return '<div class="plan-row ' + (p.status === 'done' ? 'done' : (p.status === 'dropped' ? 'dropped' : '')) + '">'
+          + planPriorityTag(p)
+          + '<div class="plan-main"><div class="plan-title">' + escapeHtml(p.video) + '</div>'
+          + '<div class="plan-sub">' + planSubHtml(p, nowMs) + '</div>' + (p.status === 'todo' ? rawPathHtml(p) : '') + '</div>'
+          + live + removable
+          + (p.status === 'done' ? '<button type="button" class="switch-link" data-sendback="' + escapeHtml(p.id) + '">send back</button>' : '')
+          + '</div>';
+      }).join('');
+      return head + rows;
+    }).join('');
+  }
+
+  function setPlanButtonsDisabled(disabled){
+    var a = document.getElementById('start-btn');
+    var b = document.getElementById('add-start-btn');
+    if(a){ a.disabled = disabled; }
+    if(b){ b.disabled = disabled; }
+  }
+
+  function resetDueDates(){
+    var today = todayStr();
+    ['f-deadline-date', 'm-date'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){ el.min = today; el.value = today; }
+    });
+  }
+
+  function addPlanItem(startNow){
+    var errEl = document.getElementById('form-error');
+    errEl.textContent = '';
+
+    var editor = document.getElementById('f-editor').value.trim();
+    var video = document.getElementById('f-video').value.trim();
+    var project = document.getElementById('f-project').value;
+    var stage = document.getElementById('f-stage').value;
+    var notes = document.getElementById('f-notes').value.trim();
+    var priority = document.getElementById('f-priority').value;
+    var dueDate = document.getElementById('f-deadline-date').value;
+    var deadline = document.getElementById('f-deadline').value;
+
+    if(!editor || !video){ errEl.textContent = 'Editor and video are required.'; return; }
+    if(!project || project === '__add_new__'){ errEl.textContent = 'Pick a project first.'; return; }
+    if(!stage || stage === '__add_new__'){ errEl.textContent = 'Pick a stage first.'; return; }
+    if(!dueDate){ errEl.textContent = 'Pick a due date.'; return; }
+    if(dueDate < todayStr()){ errEl.textContent = 'The due date can\'t be in the past.'; return; }
+    if(startNow && state.activeTake){
+      errEl.textContent = 'Finish or hold your current take first — or use "Add to plan" to queue this one.';
+      return;
+    }
+
+    var plan = {
+      id: uid(),
+      editor: editor,
+      date: todayStr(),
+      dueDate: dueDate,
+      video: video,
+      project: project,
+      stage: stage,
+      notes: notes,
+      priority: priority,
+      deadline: deadline || '',
+      addedMidDay: dueDate === todayStr() && editorHasActivityToday(editor),
+      assignedBy: '',
+      createdAt: new Date().toISOString(),
+      status: 'todo',
+      heldReason: '',
+      doneAt: '',
+      doneDate: '',
+      syncPending: false
+    };
+
+    setPlanButtonsDisabled(true);
+    withRetry(function(){ return savePlanDoc(plan); }).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.plans[plan.id] = plan;
+      document.getElementById('f-video').value = '';
+      document.getElementById('f-notes').value = '';
+      document.getElementById('f-deadline').value = '';
+      document.getElementById('f-priority').value = 'normal';
+      resetDueDates();
+      document.getElementById('lock-warning').style.display = 'none';
+      renderPlanList();
+      if(startNow){ startTakeFromPlan(plan.id); }
+    }).catch(function(err){
+      errEl.textContent = planErrorText(err, 'save this plan item');
+    }).finally(function(){
+      setPlanButtonsDisabled(false);
+    });
+  }
+
+  function fillSimpleSelect(id, list, placeholder){
+    var sel = document.getElementById(id);
+    if(!sel){ return; }
+    var cur = sel.value;
+    sel.innerHTML = (placeholder ? '<option value="">' + escapeHtml(placeholder) + '</option>' : '')
+      + list.map(function(v){ return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+    if(cur && list.indexOf(cur) !== -1){ sel.value = cur; }
+  }
+
+  function populateAssignEditorSelect(){
+    if(!state.credentials){ return; }
+    fillSimpleSelect('m-editor', Object.keys(state.credentials.editors).sort(), 'Select editor…');
+  }
+
+  function assignTask(){
+    var errEl = document.getElementById('assign-error');
+    errEl.textContent = '';
+
+    var editor = document.getElementById('m-editor').value;
+    var video = document.getElementById('m-video').value.trim();
+    var project = document.getElementById('m-project').value;
+    var stage = document.getElementById('m-stage').value;
+    var priority = document.getElementById('m-priority').value;
+    var dueDate = document.getElementById('m-date').value;
+    var deadline = document.getElementById('m-time').value;
+    var notes = document.getElementById('m-notes').value.trim();
+
+    if(!editor){ errEl.textContent = 'Pick an editor.'; return; }
+    if(!video){ errEl.textContent = 'Enter the video / episode.'; return; }
+    if(!project){ errEl.textContent = 'Pick a project.'; return; }
+    if(!stage){ errEl.textContent = 'Pick a stage.'; return; }
+    if(!dueDate){ errEl.textContent = 'Pick a due date.'; return; }
+    if(dueDate < todayStr()){ errEl.textContent = 'The due date can\'t be in the past.'; return; }
+
+    var plan = {
+      id: uid(),
+      editor: editor,
+      date: todayStr(),
+      dueDate: dueDate,
+      video: video,
+      project: project,
+      stage: stage,
+      notes: notes,
+      priority: priority,
+      deadline: deadline || '',
+      addedMidDay: false,
+      assignedBy: (state.identity && state.identity.name) || MANAGER_NAME,
+      createdAt: new Date().toISOString(),
+      status: 'todo',
+      heldReason: '',
+      doneAt: '',
+      doneDate: '',
+      syncPending: false
+    };
+
+    var btn = document.getElementById('assign-task-btn');
+    btn.disabled = true;
+    withRetry(function(){ return savePlanDoc(plan); }).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.plans[plan.id] = plan;
+      document.getElementById('m-video').value = '';
+      document.getElementById('m-notes').value = '';
+      document.getElementById('m-time').value = '';
+      document.getElementById('m-priority').value = 'normal';
+      resetDueDates();
+      renderPlansPanel();
+      errEl.style.color = 'var(--teal)';
+      errEl.textContent = 'Assigned to ' + editor + '.';
+      setTimeout(function(){ errEl.textContent = ''; errEl.style.color = ''; }, 2500);
+    }).catch(function(err){
+      errEl.style.color = '';
+      errEl.textContent = planErrorText(err, 'assign this task');
+    }).finally(function(){
+      btn.disabled = false;
+    });
+  }
+
+  /* ---------- office / home (asked once a day, saved on every take) ---------- */
+  function todayLocation(){
+    try { return localStorage.getItem('ss_loc_' + todayStr()) || ''; } catch(e){ return state.locToday || ''; }
+  }
+  function setTodayLocation(v){
+    state.locToday = v;
+    try { localStorage.setItem('ss_loc_' + todayStr(), v); } catch(e){}
+    renderLocBar();
+    // a running take picks up the change too
+    if(state.activeTake && state.identity){ state.activeTake.location = v; db.collection('activeTakes').doc(state.identity.name).set({ location: v }, { merge: true }).catch(function(){}); }
+  }
+  function renderLocBar(){
+    var bar = document.getElementById('loc-bar');
+    if(!bar) return;
+    var isEditor = state.identity && state.identity.role === 'editor';
+    bar.style.display = isEditor ? 'flex' : 'none';
+    var v = todayLocation();
+    bar.querySelectorAll('[data-loc]').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-loc') === v); });
+    bar.querySelector('.loc-q').textContent = v ? ('Working from ' + (v === 'home' ? 'home' : 'the office') + ' today') : 'Where are you working today?';
+    if(v){ bar.classList.remove('need'); document.getElementById('loc-msg').textContent = ''; }
+  }
+  function needLocation(){
+    if(todayLocation()) return false;
+    var bar = document.getElementById('loc-bar');
+    bar.classList.add('need');
+    document.getElementById('loc-msg').textContent = 'Choose Office or Home first.';
+    bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return true;
+  }
+
+  function startTakeFromPlan(planId){
+    var errEl = document.getElementById('plan-error');
+    errEl.textContent = '';
+    if(needLocation()){ return; }
+    var plan = state.plans[planId];
+    if(!plan){ return; }
+    if(!state.takesLoaded){ errEl.textContent = 'Still loading — try again in a second.'; return; }
+    if(state.activeTake){
+      errEl.textContent = 'Finish or hold your current take before starting another one.';
+      return;
+    }
+
+    var editor = state.identity.name;
+    var take = {
+      video: plan.video,
+      project: plan.project,
+      stage: plan.stage,
+      notes: plan.notes || '',
+      startedAt: new Date().toISOString(),
+      paused: false,
+      pausedAt: null,
+      pauseReason: '',
+      pauseLog: [],
+      planId: plan.id,
+      resumedFromHold: !!plan.heldReason,
+      location: todayLocation()
+    };
+
+    withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.allActiveTakes[editor] = take;
+      state.activeTake = take;
+
+      var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
+      setLock(plan.video, lockData).then(function(){ state.locks[plan.video] = lockData; });
+
+      var startPatch = { sheetStatus: 'In progress', syncPending: true, updatedAt: new Date().toISOString(), updatedBy: 'app' };
+      patchPlanDoc(plan.id, startPatch).then(function(){ Object.assign(plan, startPatch); });
+
+      document.getElementById('lock-warning').style.display = 'none';
+      enterActiveTakeUI();
+    }).catch(function(err){
+      errEl.textContent = planErrorText(err, 'start this take');
+    });
+  }
+
+  function askDropPlan(planId){
+    state.confirmDropPlan = planId;
+    renderPlanList();
+    renderPlansPanel();
+  }
+
+  function performDropPlan(planId){
+    state.confirmDropPlan = null;
+    var patch = { status: 'dropped', droppedAt: new Date().toISOString(), droppedDate: todayStr() };
+    withRetry(function(){ return patchPlanDoc(planId, patch); }).then(function(res){
+      var errEl = document.getElementById('plan-error');
+      if(res && res.error){ errEl.textContent = planErrorText(res.error, 'remove this item'); return; }
+      if(state.plans[planId]){ Object.assign(state.plans[planId], patch); }
+      renderPlanList();
+      renderPlansPanel();
+    });
+  }
+
+  function finalizeTake(editor, take, notesOverride, pauseReasonOverride, extraFields){
+    var pauseLog = (take.pauseLog || []).slice();
+    if(take.paused && take.pausedAt){
+      var reason = pauseReasonOverride != null ? pauseReasonOverride : (take.pauseReason || '');
+      pauseLog.push({
+        pausedAt: take.pausedAt, resumedAt: new Date().toISOString(), reason: reason,
+        durationMs: Date.now() - new Date(take.pausedAt).getTime()
+      });
+    }
+
+    var startedMs = new Date(take.startedAt).getTime();
+    var totalMs = Date.now() - startedMs;
+    var pausedMs = pauseLog.reduce(function(s,p){ return s + p.durationMs; }, 0);
+    var workedMs = Math.max(0, totalMs - pausedMs);
+    var hours = workedMs / 3600000;
+    if(hours <= 0){ hours = 0.01; }
+
+    var entry = {
+      id: uid(),
+      editor: editor,
+      video: take.video,
+      project: take.project,
+      stage: take.stage,
+      hours: hours,
+      notes: notesOverride != null ? notesOverride : (take.notes || ''),
+      date: todayStr(new Date(startedMs)),
+      startedAt: take.startedAt,
+      loggedAt: new Date().toISOString(),
+      pauseCount: pauseLog.length,
+      pausedMinutes: Math.round(pausedMs / 60000),
+      pauses: pauseLog,
+      held: false,
+      holdReason: '',
+      planId: take.planId || '',
+      outcome: 'finished',
+      outcomeNote: '',
+      month: todayStr(new Date(startedMs)).slice(0, 7),
+      location: take.location || todayLocation() || ''
+    };
+    if(extraFields){ Object.assign(entry, extraFields); }
+
+    return db.collection('entries').doc(entry.id).set(entry)
+      .then(function(){
+        // keeps a tiny list of every video name so the manager's lookup never has to scan history
+        db.collection('config').doc('videoIndex')
+          .set({ list: firebase.firestore.FieldValue.arrayUnion(entry.video) }, { merge: true })
+          .catch(function(){});
+        return withRetry(function(){ return clearActiveTakeDoc(editor); });
+      })
+      .then(function(res){
+        if(res && res.error){ throw new Error(res.error); }
+        delete state.allActiveTakes[editor];
+        var planStep = Promise.resolve();
+        if(take.planId){
+          // Ending a planned take finishes that plan item; holding it parks the item
+          // (with the reason) so it stays on the editor's list to pick up later.
+          var closes = entry.outcome === 'finished' || entry.outcome === 'ready_to_upload';
+          var prevHours = (state.plans[take.planId] && state.plans[take.planId].hoursLogged) || 0;
+          var patch = {
+            status: closes ? 'done' : 'todo',
+            doneAt: closes ? entry.loggedAt : '',
+            doneDate: closes ? todayStr() : '',
+            syncPending: true,
+            heldReason: entry.outcome === 'resume_later' ? (entry.outcomeNote || 'Resume later') : '',
+            sheetStatus: OUTCOME_SHEET_STATUS[entry.outcome] || 'In progress',
+            outcomeNote: entry.outcomeNote || '',
+            hoursLogged: Math.round((prevHours + entry.hours) * 1000) / 1000,
+            updatedAt: new Date().toISOString(),
+            updatedBy: 'app'
+          };
+          if(closes){ patch.needsEditing = false; }
+          if(closes && entry.videoLink){ patch.videoLink = entry.videoLink; }
+          planStep = withRetry(function(){ return patchPlanDoc(take.planId, patch); }).then(function(resP){
+            if(resP && resP.error){ throw new Error(resP.error); }
+            if(state.plans[take.planId]){ Object.assign(state.plans[take.planId], patch); }
+          });
+        }
+        return planStep.then(function(){
+          var isFinalStage = state.stages.length > 0 && entry.stage === state.stages[state.stages.length - 1];
+          if(isFinalStage){
+            return withRetry(function(){ return clearLock(entry.video); }).then(function(res2){
+              if(res2 && res2.error){ throw new Error(res2.error); }
+              delete state.locks[entry.video];
+            });
+          }
+          var lockData = { editor: entry.editor, lastActiveAt: new Date().toISOString() };
+          return withRetry(function(){ return setLock(entry.video, lockData); }).then(function(res3){
+            if(res3 && res3.error){ throw new Error(res3.error); }
+            state.locks[entry.video] = lockData;
+          });
+        });
+      })
+      .then(function(){
+        // state.entries is intentionally not updated here — the live watchEntries
+        // listener will pick up this write and refresh it; doing both was racing
+        // and occasionally double-counting the same entry.
+        return { ok: true, entry: entry };
+      })
+      .catch(function(err){ return { error: String(err), entry: entry }; });
+  }
+
+  var OUTCOME_SHEET_STATUS = {
+    finished: 'Done',
+    ready_to_upload: 'Ready to upload',
+    in_progress: 'In progress',
+    resume_later: 'Resume later',
+    other: 'Other'
+  };
+
+  // A finished task can carry the video's link; tasks from the SM Deliverables sheet need it
+  // (the sheet writes it into that reel's "Video Link" cell).
+  function activePlan(){ var t = state.activeTake; return (t && t.planId && state.plans[t.planId]) || null; }
+  function linkRequired(){ var p = activePlan(); return !!(p && p.assignedBy === 'SM Deliverables'); }
+  function updateEndLinkField(){
+    var outcome = document.getElementById('end-outcome').value;
+    var closes = outcome === 'finished' || outcome === 'ready_to_upload';
+    document.getElementById('end-link-field').style.display = closes ? 'block' : 'none';
+    document.getElementById('end-link-label').textContent = 'Video link (Frame.io)' + (linkRequired() ? ' — required' : ' (optional)');
+  }
+
+  function updateEndPromptLabels(){
+    updateEndLinkField();
+    var outcome = document.getElementById('end-outcome').value;
+    var label = document.getElementById('end-note-label');
+    var input = document.getElementById('end-note');
+    if(outcome === 'resume_later'){
+      label.textContent = 'Why are you pausing it? (optional)';
+      input.placeholder = 'e.g. waiting on VO files, client feedback needed';
+    } else if(outcome === 'other'){
+      label.textContent = 'What happened? (required)';
+      input.placeholder = 'Describe the status in a few words';
+    } else {
+      label.textContent = 'Note (optional)';
+      input.placeholder = 'Anything the team should know?';
+    }
+  }
+
+  // Clicking "End Take" now asks how the take ended before anything is saved.
+  function endTake(){
+    if(!state.activeTake) return;
+    state.holdMode = false;
+    document.getElementById('end-error').textContent = '';
+    document.getElementById('end-outcome').value = linkRequired() ? 'ready_to_upload' : 'finished';
+    document.getElementById('end-note').value = '';
+    var ap = activePlan();
+    document.getElementById('end-link').value = (ap && ap.videoLink) || '';
+    updateEndPromptLabels();
+    document.getElementById('end-prompt').style.display = 'block';
+    document.getElementById('active-take-buttons').style.display = 'none';
+    document.getElementById('end-note').focus();
+  }
+
+  // "Hold" = end this take as "resume later" with a reason; the task stays on the editor's list as on hold.
+  function holdTakeQuick(){
+    if(!state.activeTake) return;
+    document.getElementById('end-error').textContent = '';
+    document.getElementById('end-outcome').value = 'resume_later';
+    document.getElementById('end-note').value = '';
+    state.holdMode = true;
+    updateEndPromptLabels();
+    document.getElementById('end-note-label').textContent = 'Why are you putting it on hold? (required)';
+    document.getElementById('end-prompt').style.display = 'block';
+    document.getElementById('active-take-buttons').style.display = 'none';
+    document.getElementById('end-note').focus();
+  }
+
+  function hideEndPrompt(){
+    state.holdMode = false;
+    document.getElementById('end-prompt').style.display = 'none';
+    document.getElementById('active-take-buttons').style.display = 'flex';
+  }
+
+  function submitEndTake(){
+    if(!state.activeTake) return;
+    var editor = document.getElementById('f-editor').value.trim() || state.identity.name;
+    var take = state.activeTake;
+    var notes = document.getElementById('f-notes-active').value.trim();
+    var pauseReasonInput = document.getElementById('pause-reason-input');
+    var pauseReason = pauseReasonInput ? pauseReasonInput.value.trim() : null;
+    var outcome = document.getElementById('end-outcome').value;
+    var outcomeNote = document.getElementById('end-note').value.trim();
+    var errEl = document.getElementById('end-error');
+    errEl.textContent = '';
+
+    if(outcome === 'resume_later' && state.holdMode && !outcomeNote){
+      errEl.textContent = 'Write why it is on hold (your manager reviews hold reasons).';
+      document.getElementById('end-note').focus();
+      return;
+    }
+    if(outcome === 'other' && !outcomeNote){
+      errEl.textContent = 'Add a short note describing the status.';
+      document.getElementById('end-note').focus();
+      return;
+    }
+
+    var closesNow = outcome === 'finished' || outcome === 'ready_to_upload';
+    var videoLink = closesNow ? document.getElementById('end-link').value.trim() : '';
+    if(closesNow && videoLink && !/^https?:\/\/\S+$/i.test(videoLink)){
+      errEl.textContent = 'The video link should start with https:// (copy it from Frame.io).';
+      document.getElementById('end-link').focus();
+      return;
+    }
+    if(closesNow && !videoLink && linkRequired()){
+      errEl.textContent = 'Paste the video link (Frame.io) before finishing this task.';
+      document.getElementById('end-link').focus();
+      return;
+    }
+
+    var extra = { outcome: outcome, outcomeNote: outcomeNote };
+    if(videoLink){ extra.videoLink = videoLink; }
+    if(outcome === 'resume_later'){ extra.held = true; extra.holdReason = outcomeNote; }
+
+    var btn = document.getElementById('confirm-end-btn');
+    btn.disabled = true;
+
+    finalizeTake(editor, take, notes, pauseReason, extra).then(function(res){
+      if(res && res.error){ throw new Error(res.error); }
+      state.activeTake = null;
+
+      document.getElementById('f-video').value = '';
+      document.getElementById('f-notes').value = '';
+      document.getElementById('f-notes-active').value = '';
+      hideEndPrompt();
+      refreshDatalists();
+      renderFeed();
+      if(state.activeTab === 'dashboard') renderDashboard();
+      exitActiveTakeUI();
+    }).catch(function(){
+      errEl.textContent = "Couldn't save — check your connection and try again.";
+    }).finally(function(){
+      btn.disabled = false;
+    });
+  }
+
+  function computeHeldItems(editorName){
+    var mine = state.entries.filter(function(e){ return e.editor === editorName; });
+    var byVideo = {};
+    mine.forEach(function(e){
+      if(!byVideo[e.video] || e.loggedAt > byVideo[e.video].loggedAt){
+        byVideo[e.video] = e;
+      }
+    });
+    return Object.keys(byVideo).map(function(v){ return byVideo[v]; })
+      .filter(function(e){ return e.held && !e.planId; })
+      .sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+  }
+
+  function renderHeldItems(){
+    var wrap = document.getElementById('held-items-list');
+    if(!wrap || !state.identity || state.identity.role !== 'editor') return;
+    var items = computeHeldItems(state.identity.name);
+    if(items.length === 0){
+      wrap.innerHTML = '<div class="empty-state">Nothing on hold right now.</div>';
+      return;
+    }
+    wrap.innerHTML = items.map(function(e){
+      var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
+      return '<div class="vh-row">'
+        + '<div class="vh-date">'+escapeHtml(formatDateLabel(e.date))+'</div>'
+        + '<div class="vh-editor" title="'+escapeHtml(e.video)+'">'+videoLabel+'</div>'
+        + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
+        + '<div class="vh-notes" title="'+escapeHtml(e.holdReason||'')+'">'+escapeHtml(e.holdReason || 'No reason given')+'</div>'
+        + '<button type="button" class="switch-link" data-resume-held="'+escapeHtml(e.video)+'" data-resume-project="'+escapeHtml(e.project||'')+'" data-resume-stage="'+escapeHtml(e.stage)+'">resume</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  function resumeHeldItem(video, project, stage){
+    var errEl = document.getElementById('held-items-error');
+    errEl.textContent = '';
+
+    if(state.activeTake){
+      errEl.textContent = 'Finish or hold your current take before resuming another one.';
+      return;
+    }
+    if(needLocation()){ return; }
+
+    var editor = state.identity.name;
+    populateProjectSelect(project);
+    populateStageSelect(stage);
+    document.getElementById('f-video').value = video;
+
+    var take = {
+      video: video,
+      project: project || document.getElementById('f-project').value,
+      stage: stage || document.getElementById('f-stage').value,
+      notes: '',
+      startedAt: new Date().toISOString(),
+      paused: false,
+      pausedAt: null,
+      pauseReason: '',
+      pauseLog: [],
+      resumedFromHold: true,
+      location: todayLocation()
+    };
+
+    withRetry(function(){ return setActiveTakeDoc(editor, take); }).then(function(res){
+      if(res && res.error){
+        errEl.textContent = "Couldn't resume — check your connection and try again.";
+        return;
+      }
+      state.allActiveTakes[editor] = take;
+      state.activeTake = take;
+      document.getElementById('lock-warning').style.display = 'none';
+
+      var lockData = { editor: editor, lastActiveAt: new Date().toISOString() };
+      withRetry(function(){ return setLock(video, lockData); }).then(function(){ state.locks[video] = lockData; });
+
+      enterActiveTakeUI();
+    });
+  }
+
+  function monthBoundsForOffset(offset){
+    var d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + offset);
+    var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-01';
+    var endD = new Date(d.getFullYear(), d.getMonth()+1, 1);
+    var end = endD.getFullYear() + '-' + pad(endD.getMonth()+1) + '-01';
+    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return { start: start, end: end, label: months[d.getMonth()] + ' ' + d.getFullYear() };
+  }
+
+  function renderMyHistory(){
+    var wrap = document.getElementById('my-history-list');
+    if(!wrap || !state.identity || state.identity.role !== 'editor') return;
+    var bounds = monthBoundsForOffset(state.myHistoryMonthOffset);
+    document.getElementById('my-history-month-label').textContent = bounds.label;
+    document.getElementById('my-history-next').disabled = state.myHistoryMonthOffset >= 0;
+
+    var monthKey = bounds.start.slice(0, 7);
+    if(monthKey !== todayStr().slice(0, 7)){
+      var cacheKey = 'm|' + state.identity.name + '|' + monthKey;
+      if(!state.entryParts.extra[cacheKey]){
+        wrap.innerHTML = '<div class="empty-state">Loading…</div>';
+        document.getElementById('my-history-summary').textContent = '';
+        if(!state.monthFetching[cacheKey]){
+          state.monthFetching[cacheKey] = true;
+          db.collection('entries').where('editor', '==', state.identity.name).where('month', '==', monthKey).get()
+            .then(function(snap){
+              var arr = [];
+              snap.forEach(function(d){ arr.push(d.data()); });
+              state.entryParts.extra[cacheKey] = arr;
+              rebuildEntries();
+              delete state.monthFetching[cacheKey];
+              renderMyHistory();
+            }).catch(function(err){
+              delete state.monthFetching[cacheKey];
+              wrap.innerHTML = '<div class="empty-state">Couldn\'t load this month — try again.</div>';
+              showDbNotice(err);
+            });
+        }
+        return;
+      }
+    }
+
+    var rows = state.entries.filter(function(e){
+      return e.editor === state.identity.name && e.date >= bounds.start && e.date < bounds.end;
+    }).sort(function(a,b){ return b.loggedAt.localeCompare(a.loggedAt); });
+
+    var totalHours = rows.reduce(function(s,e){ return s + e.hours; }, 0);
+    var videoCount = new Set(rows.map(function(e){ return e.video; })).size;
+    document.getElementById('my-history-summary').textContent = rows.length
+      ? (formatHM(totalHours) + ' · ' + videoCount + ' video' + (videoCount===1?'':'s'))
+      : '';
+
+    if(rows.length === 0){
+      wrap.innerHTML = '<div class="empty-state">Nothing logged this month.</div>';
+      return;
+    }
+    wrap.innerHTML = rows.map(function(e){
+      var videoLabel = escapeHtml(e.video) + (e.project ? ' <span style="color:var(--navy-faint);font-weight:500;">· '+escapeHtml(e.project)+'</span>' : '');
+      return '<div class="vh-row">'
+        + '<div class="vh-date">'+escapeHtml(formatDateLabel(e.date))+'</div>'
+        + '<div class="vh-editor" title="'+escapeHtml(e.video)+'">'+videoLabel+'</div>'
+        + '<div class="feed-stage tag-color-'+stageColorClass(e.stage)+'">'+escapeHtml(e.stage)+'</div>'
+        + '<div class="vh-dur">'+formatHM(e.hours)+'</div>'
+        + pauseBadgeHtml(e) + holdBadgeHtml(e)
+        + '<div class="vh-notes" title="'+escapeHtml(e.notes)+'">'+escapeHtml(e.notes || '—')+'</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  function askForceEndTake(editorName){
+    state.confirmForceEnd = editorName;
+    renderActiveTakesPanel();
+  }
+
+  function performForceEndTake(editorName){
+    var take = state.allActiveTakes[editorName];
+    state.confirmForceEnd = null;
+    if(!take){ renderActiveTakesPanel(); return; }
+    finalizeTake(editorName, take, null, null, { outcome: 'in_progress', outcomeNote: 'Ended by manager' }).then(function(res){
+      if(res && res.error){ window.alert("Couldn't end that take — try again."); return; }
+      renderActiveTakesPanel();
+    });
+  }
+
+  /* ---------- period ---------- */
+  function setPeriod(p){
+    state.period = p;
+    document.querySelectorAll('.period-btn').forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-period') === p);
+    });
+    renderDashboard();
+  }
+
+  /* ---------- event delegation ---------- */
+  document.addEventListener('click', function(e){
+    if(e.target && e.target.id === 'gate-editor-btn'){
+      var name = document.getElementById('gate-editor-name').value;
+      var pw = document.getElementById('gate-editor-password').value;
+      var err = document.getElementById('gate-error');
+      if(!name){ err.textContent = 'Select your name from the list.'; return; }
+      if(!pw){ err.textContent = 'Enter your password.'; return; }
+      if(!state.migrated){ err.textContent = 'SS Tracker was just upgraded. Ask the manager to log in once, then try again.'; return; }
+      err.textContent = 'Checking…';
+      createSession('editor', name, pw).then(function(){
+        state.credentials.editors[name] = pw;
+        var editorId = { role:'editor', name: name };
+        return saveIdentity(editorId).then(function(){ state.identity = editorId; err.textContent = ''; showMain(); });
+      }).catch(function(e1){
+        err.textContent = /permission/i.test(String(e1 && (e1.code || e1.message) || e1)) ? 'Incorrect password.' : "Couldn't sign in — check your connection and try again.";
+      });
+      return;
+    }
+    if(e.target && e.target.id === 'gate-manager-btn'){
+      var code = document.getElementById('gate-manager-code').value.trim();
+      var leadName = document.getElementById('gate-manager-name').value || MANAGER_NAME;
+      var err2 = document.getElementById('gate-error');
+      if(!code){ err2.textContent = 'Enter the access code.'; return; }
+      if(!state.migrated && leadName !== MANAGER_NAME){ err2.textContent = 'The first login after the upgrade must be ' + MANAGER_NAME + ' with the manager code.'; return; }
+      err2.textContent = state.migrated ? 'Checking…' : 'Upgrading SS Tracker sign-in (one time)…';
+      (state.migrated ? createSession('manager', leadName, code).then(loadAccessForManager) : upgradeAccess(code)).then(function(){
+        var mgrId = { role:'manager', name: leadName };
+        return saveIdentity(mgrId).then(function(){ state.identity = mgrId; err2.textContent = ''; showMain(); });
+      }).catch(function(e2){
+        var t = String(e2 && (e2.code || e2.message) || e2);
+        err2.textContent = /permission|incorrect/i.test(t) ? 'Incorrect access code.' : "Couldn't sign in — " + t.slice(0, 140);
+      });
+      return;
+    }
+    if(e.target && e.target.id === 'switch-user-btn'){
+      var leave = function(){ clearIdentity().then(function(){ location.reload(); }); };
+      if(auth && auth.currentUser){ sessionRef().delete().then(leave, leave); } else { leave(); }
+      return;
+    }
+    if(e.target && e.target.id === 'change-password-btn'){
+      document.getElementById('pw-current').value = '';
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-confirm').value = '';
+      document.getElementById('pw-error').textContent = '';
+      document.getElementById('pw-error').style.color = 'var(--red)';
+      document.getElementById('password-panel').style.display = 'block';
+      document.getElementById('pw-current').focus();
+      return;
+    }
+    if(e.target && e.target.id === 'pw-cancel-btn'){
+      document.getElementById('password-panel').style.display = 'none';
+      return;
+    }
+    if(e.target && e.target.id === 'pw-save-btn'){
+      var cur = document.getElementById('pw-current').value;
+      var nw = document.getElementById('pw-new').value;
+      var conf = document.getElementById('pw-confirm').value;
+      var pwErr = document.getElementById('pw-error');
+      pwErr.style.color = 'var(--red)';
+
+      var isEditorRole = state.identity.role === 'editor';
+      var isMainMgr = !isEditorRole && state.identity.name === MANAGER_NAME;
+      var storedPw = isEditorRole ? state.credentials.editors[state.identity.name] : (isMainMgr ? state.credentials.managerCode : (state.credentials.managers || {})[state.identity.name]);
+
+      if(cur !== storedPw){ pwErr.textContent = 'Current password is incorrect.'; return; }
+      if(!nw || nw.length < 4){ pwErr.textContent = 'New password must be at least 4 characters.'; return; }
+      if(nw !== conf){ pwErr.textContent = 'New passwords do not match.'; return; }
+
+      var btn = document.getElementById('pw-save-btn');
+      btn.disabled = true;
+      var updated = JSON.parse(JSON.stringify(state.credentials));
+      if(isEditorRole){ updated.editors[state.identity.name] = nw; }
+      else if(isMainMgr){ updated.managerCode = nw; }
+      else { updated.managers = updated.managers || {}; updated.managers[state.identity.name] = nw; }
+
+      persistCredentials(updated).then(function(res){
+        if(res && res.error){ throw new Error(res.error); }
+        state.credentials = updated;
+        pwErr.style.color = 'var(--teal)';
+        pwErr.textContent = 'Password updated.';
+        document.getElementById('pw-current').value = '';
+        document.getElementById('pw-new').value = '';
+        document.getElementById('pw-confirm').value = '';
+      }).catch(function(){
+        pwErr.style.color = 'var(--red)';
+        pwErr.textContent = "Couldn't save — try again.";
+      }).finally(function(){
+        btn.disabled = false;
+      });
+      return;
+    }
+
+    var editorToggle = e.target.closest('[data-toggle-editor]');
+    if(editorToggle){
+      var toggleName = editorToggle.getAttribute('data-toggle-editor');
+      if(state.expandedEditors.has(toggleName)){ state.expandedEditors.delete(toggleName); }
+      else { state.expandedEditors.add(toggleName); }
+      renderDashboard();
+      return;
+    }
+
+    var periodBtn = e.target.closest('[data-period]');
+    if(periodBtn){ setPeriod(periodBtn.getAttribute('data-period')); return; }
+
+    if(e.target.closest('#hold-btn')){ holdTakeQuick(); return; }
+    var locBtn = e.target.closest('[data-loc]');
+    if(locBtn){ setTodayLocation(locBtn.getAttribute('data-loc')); return; }
+    var endBtn = e.target.closest('#end-btn');
+    if(endBtn){ endTake(); return; }
+
+    if(e.target.closest('#add-start-btn')){ addPlanItem(true); return; }
+    if(e.target.closest('#assign-task-btn')){ assignTask(); return; }
+    var copyRaw = e.target.closest('[data-copy-raw]');
+    if(copyRaw){
+      var txt = copyRaw.getAttribute('data-copy-raw');
+      var done = function(){ copyRaw.textContent = 'Copied ✓'; setTimeout(function(){ if(copyRaw.isConnected){ copyRaw.textContent = 'Copy'; } }, 1800); };
+      var fallback = function(){ var ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch(err){} document.body.removeChild(ta); };
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done, fallback); } else { fallback(); }
+      return;
+    }
+    var startPlanBtn = e.target.closest('[data-start-plan]');
+    if(startPlanBtn){ startTakeFromPlan(startPlanBtn.getAttribute('data-start-plan')); return; }
+    var askDropBtn = e.target.closest('[data-ask-drop-plan]');
+    if(askDropBtn){ askDropPlan(askDropBtn.getAttribute('data-ask-drop-plan')); return; }
+    var confirmDropBtn = e.target.closest('[data-confirm-drop-plan]');
+    if(confirmDropBtn){ performDropPlan(confirmDropBtn.getAttribute('data-confirm-drop-plan')); return; }
+
+    var pauseBtn = e.target.closest('#pause-btn');
+    if(pauseBtn){ pauseTake(); return; }
+
+    var resumeBtn = e.target.closest('#resume-btn');
+    if(resumeBtn){ resumeTake(); return; }
+
+    if(e.target.closest('#cancel-end-btn')){ hideEndPrompt(); return; }
+    if(e.target.closest('#confirm-end-btn')){ submitEndTake(); return; }
+
+    var resumeHeldBtn = e.target.closest('[data-resume-held]');
+    if(resumeHeldBtn){
+      resumeHeldItem(
+        resumeHeldBtn.getAttribute('data-resume-held'),
+        resumeHeldBtn.getAttribute('data-resume-project'),
+        resumeHeldBtn.getAttribute('data-resume-stage')
+      );
+      return;
+    }
+
+    var historyPrevBtn = e.target.closest('#my-history-prev');
+    if(historyPrevBtn){ state.myHistoryMonthOffset -= 1; renderMyHistory(); return; }
+    var historyNextBtn = e.target.closest('#my-history-next');
+    if(historyNextBtn){
+      if(state.myHistoryMonthOffset < 0){ state.myHistoryMonthOffset += 1; renderMyHistory(); }
+      return;
+    }
+
+    var askForceEndBtn = e.target.closest('[data-ask-force-end]');
+    if(askForceEndBtn){ askForceEndTake(askForceEndBtn.getAttribute('data-ask-force-end')); return; }
+    var confirmForceEndBtn = e.target.closest('[data-confirm-force-end]');
+    if(confirmForceEndBtn){ performForceEndTake(confirmForceEndBtn.getAttribute('data-confirm-force-end')); return; }
+
+    var exportAllBtn = e.target.closest('#export-all-btn');
+    if(exportAllBtn){ exportMonthlyReport(); return; }
+
+    var exportEditorBtn = e.target.closest('#export-editor-btn');
+    if(exportEditorBtn){ exportEditorReport(exportEditorBtn.getAttribute('data-editor')); return; }
+
+    if(e.target.closest('#add-project-confirm')){ confirmAddProject(); return; }
+    if(e.target.closest('#add-project-cancel')){ cancelAddProject(); return; }
+    if(e.target.closest('#add-stage-confirm')){ confirmAddStage(); return; }
+    if(e.target.closest('#add-stage-cancel')){ cancelAddStage(); return; }
+
+    var moveUpBtn = e.target.closest('[data-move-up]');
+    if(moveUpBtn){ moveStage(moveUpBtn.getAttribute('data-move-up'), 'up'); return; }
+    var moveDownBtn = e.target.closest('[data-move-down]');
+    if(moveDownBtn){ moveStage(moveDownBtn.getAttribute('data-move-down'), 'down'); return; }
+    var askDelBtn = e.target.closest('[data-ask-delete]');
+    if(askDelBtn){ askDeleteStage(askDelBtn.getAttribute('data-ask-delete')); return; }
+    var confirmDelBtn = e.target.closest('[data-confirm-delete]');
+    if(confirmDelBtn){ performDeleteStage(confirmDelBtn.getAttribute('data-confirm-delete')); return; }
+    if(e.target.closest('#add-stage-manage-confirm')){ confirmAddStageManage(); return; }
+
+    var askDelEditorBtn = e.target.closest('[data-ask-delete-editor]');
+    if(askDelEditorBtn){ askDeleteEditor(askDelEditorBtn.getAttribute('data-ask-delete-editor')); return; }
+    var confirmDelEditorBtn = e.target.closest('[data-confirm-delete-editor]');
+    if(confirmDelEditorBtn){ performDeleteEditor(confirmDelEditorBtn.getAttribute('data-confirm-delete-editor')); return; }
+    var trTab = e.target.closest('[data-tr-tab]');
+    if(trTab){ showSection(trTab.getAttribute('data-tr-tab')); window.scrollTo(0, 0); return; }
+    if(e.target.closest('#open-control-room') || e.target.closest('#open-control-room-tab')){
+      var cr = document.getElementById('control-room'), fr = document.getElementById('cr-frame');
+      if(fr.getAttribute('src') === 'about:blank'){ fr.setAttribute('src', CONTROL_ROOM_URL); }
+      document.getElementById('cr-sub').textContent = 'Signed in as ' + state.identity.name + (state.identity.role === 'manager' ? ' (lead)' : '');
+      cr.style.display = 'flex'; document.body.style.overflow = 'hidden';
+      return;
+    }
+    if(e.target.closest('#close-control-room')){
+      document.getElementById('control-room').style.display = 'none'; document.body.style.overflow = '';
+      return;
+    }
+    if(e.target.closest('#add-lead-confirm')){ addLead(); return; }
+    if(e.target.closest('#sb-load')){ sbLoad(); return; }
+    var sbBtn = e.target.closest('[data-sendback]');
+    if(sbBtn){ sbOpen(sbBtn.getAttribute('data-sendback')); return; }
+    if(e.target.closest('[data-sb-close]') || e.target.id === 'sb-modal'){ sbClose(); return; }
+    var lr = e.target.closest('[data-ask-lead-reset]');
+    if(lr){ state.resettingLead = lr.getAttribute('data-ask-lead-reset'); state.confirmDeleteLead = null; setLeadError(''); renderLeadManageList(); setTimeout(function(){ var x = document.getElementById('reset-lead-input'); if(x){ x.focus(); } }, 0); return; }
+    if(e.target.closest('[data-cancel-lead-reset]')){ state.resettingLead = null; renderLeadManageList(); return; }
+    var lrc = e.target.closest('[data-confirm-lead-reset]');
+    if(lrc){ resetLead(lrc.getAttribute('data-confirm-lead-reset')); return; }
+    var ld = e.target.closest('[data-ask-delete-lead]');
+    if(ld){ state.confirmDeleteLead = ld.getAttribute('data-ask-delete-lead'); renderLeadManageList(); return; }
+    var ldc = e.target.closest('[data-confirm-delete-lead]');
+    if(ldc){ removeLead(ldc.getAttribute('data-confirm-delete-lead')); return; }
+    var askRenameBtn = e.target.closest('[data-ask-rename]');
+    if(askRenameBtn){ askRenameEditor(askRenameBtn.getAttribute('data-ask-rename')); return; }
+    if(e.target.closest('[data-cancel-rename]')){ cancelRenameEditor(); return; }
+    var confirmRenameBtn = e.target.closest('[data-confirm-rename]');
+    if(confirmRenameBtn){ confirmRenameEditor(confirmRenameBtn.getAttribute('data-confirm-rename')); return; }
+    var askResetBtn = e.target.closest('[data-ask-reset]');
+    if(askResetBtn){ askResetEditor(askResetBtn.getAttribute('data-ask-reset')); return; }
+    var cancelResetBtn = e.target.closest('[data-cancel-reset]');
+    if(cancelResetBtn){ cancelResetEditor(); return; }
+    var confirmResetBtn = e.target.closest('[data-confirm-reset]');
+    if(confirmResetBtn){ confirmResetEditor(confirmResetBtn.getAttribute('data-confirm-reset')); return; }
+    if(e.target.closest('#add-editor-confirm')){ confirmAddEditor(); return; }
+  });
+
+  document.addEventListener('change', function(e){
+    if(e.target && e.target.name === 'sb-fault'){
+      var k = e.target.value;
+      document.getElementById('sb-reason').innerHTML = state.sbReasonHtml[k];
+      document.getElementById('sb-sev').style.display = k === 'editor' ? '' : 'none';
+    }
+    if(e.target && e.target.id === 'sb-editor'){ sbRender(); }
+  });
+  document.addEventListener('input', function(e){ if(e.target && e.target.id === 'sb-search'){ sbRender(); } });
+  document.addEventListener('submit', function(e){ if(e.target && e.target.id === 'sb-form'){ e.preventDefault(); sbSend(e.target); } });
+  window.addEventListener('message', function(e){
+    if(e.origin === location.origin && e.data === 'cr-close'){ var c = document.getElementById('control-room'); if(c){ c.style.display = 'none'; document.body.style.overflow = ''; } }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ var crx = document.getElementById('control-room'); if(crx && crx.style.display !== 'none'){ crx.style.display = 'none'; document.body.style.overflow = ''; return; } }
+    if(e.key === 'Enter' && e.target && e.target.id === 'rename-editor-input'){
+      e.preventDefault();
+      confirmRenameEditor(e.target.getAttribute('data-editor'));
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'new-project-input'){
+      e.preventDefault();
+      confirmAddProject();
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'new-stage-input'){
+      e.preventDefault();
+      confirmAddStage();
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'new-stage-manage-input'){
+      e.preventDefault();
+      confirmAddStageManage();
+    }
+    if(e.key === 'Enter' && e.target && e.target.classList && e.target.classList.contains('stage-name-field')){
+      e.preventDefault();
+      e.target.blur();
+    }
+    if(e.key === 'Enter' && e.target && (e.target.id === 'new-editor-name-input' || e.target.id === 'new-editor-password-input')){
+      e.preventDefault();
+      confirmAddEditor();
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'reset-pw-input'){
+      e.preventDefault();
+      confirmResetEditor(e.target.getAttribute('data-editor'));
+    }
+    if(e.key === 'Enter' && e.target && e.target.id === 'pause-reason-input'){
+      e.preventDefault();
+      resumeTake();
+    }
+  });
+
+  document.addEventListener('submit', function(e){
+    if(e.target && e.target.id === 'log-form'){
+      e.preventDefault();
+      addPlanItem(false);
+    }
+  });
+
+  document.addEventListener('change', function(e){
+    if(e.target && e.target.id === 'f-project'){
+      if(e.target.value === '__add_new__'){
+        document.getElementById('add-project-row').style.display = 'flex';
+        document.getElementById('new-project-input').focus();
+      } else {
+        document.getElementById('add-project-row').style.display = 'none';
+      }
+    }
+    if(e.target && e.target.id === 'f-stage'){
+      if(e.target.value === '__add_new__'){
+        document.getElementById('add-stage-row').style.display = 'flex';
+        document.getElementById('new-stage-input').focus();
+      } else {
+        document.getElementById('add-stage-row').style.display = 'none';
+      }
+    }
+    if(e.target && e.target.id === 'end-outcome'){
+      updateEndPromptLabels();
+    }
+    if(e.target && e.target.id === 'dash-video-select'){
+      lookUpVideo(e.target.value);
+    }
+    if(e.target && e.target.id === 'dash-editor-select'){
+      renderEditorDetail(e.target.value);
+    }
+    if(e.target && e.target.classList && e.target.classList.contains('stage-name-field')){
+      renameStage(e.target.getAttribute('data-original'), e.target.value);
+    }
+  });
+
+  document.addEventListener('input', function(e){
+    if(e.target && e.target.id === 'f-video'){
+      checkVideoLock();
+    }
+  });
+
+  /* ---------- role-aware UI ---------- */
+  function applyRoleUI(){
+    var isEditor = state.identity.role === 'editor';
+    document.getElementById('panel-log').classList.toggle('active', isEditor);
+    document.getElementById('panel-dashboard').classList.toggle('active', !isEditor);
+    state.activeTab = isEditor ? 'log' : 'dashboard';
+
+    var editorField = document.getElementById('f-editor');
+    if(isEditor){
+      editorField.value = state.identity.name;
+      editorField.readOnly = true;
+      editorField.classList.add('locked-field');
+    } else {
+      editorField.value = state.identity.name || '';
+      editorField.readOnly = false;
+      editorField.classList.remove('locked-field');
+    }
+
+    document.getElementById('identity-line').innerHTML =
+      'Logged in as <strong>' + escapeHtml(state.identity.name) + '</strong> · ' + (isEditor ? 'editor' : 'manager') +
+      ' &nbsp;<button type="button" class="switch-link" id="change-password-btn">change password</button>' +
+      ' &nbsp;<button type="button" class="switch-link" id="switch-user-btn">switch</button>';
+  }
+
+  /* ---------- sections (tab bar, like the Control Room) ---------- */
+  var TR_TABS = {
+    manager: [['today', 'Today'], ['lookup', 'Look up'], ['reports', 'Reports'], ['manage', 'Manage team']],
+    editor:  [['log', 'My work']]
+  };
+  function buildSections(){
+    var panel = document.getElementById('panel-dashboard');
+    if(panel && !panel.getAttribute('data-grouped')){
+      panel.setAttribute('data-grouped', '1');
+      var boxes = {};
+      TR_TABS.manager.forEach(function(t){ var d = document.createElement('div'); d.className = 'grp' + (t[0] === 'reports' ? ' single' : ''); d.setAttribute('data-grp', t[0]); boxes[t[0]] = d; });
+      Array.prototype.slice.call(panel.children).forEach(function(el){
+        var g = el.getAttribute('data-group') || 'reports';
+        (boxes[g] || boxes.reports).appendChild(el);
+      });
+      TR_TABS.manager.forEach(function(t){ panel.appendChild(boxes[t[0]]); });
+    }
+    var role = state.identity && state.identity.role === 'manager' ? 'manager' : 'editor';
+    var tabs = TR_TABS[role], cur = null;
+    try { cur = localStorage.getItem('ss_tab_' + role); } catch(e){}
+    if(!tabs.some(function(t){ return t[0] === cur; })){ cur = tabs[0][0]; }
+    var nav = document.getElementById('tr-tabs');
+    nav.innerHTML = tabs.map(function(t){ return '<button type="button" class="tab-btn' + (t[0] === cur ? ' active' : '') + '" data-tr-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('')
+      + '<button type="button" class="tab-btn ext" id="open-control-room-tab">Control Room ↗</button>';
+    showSection(cur);
+  }
+  function showSection(key){
+    document.querySelectorAll('#tr-tabs [data-tr-tab]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-tr-tab') === key); });
+    document.querySelectorAll('#panel-dashboard .grp').forEach(function(g){ g.classList.toggle('on', g.getAttribute('data-grp') === key); });
+    var role = state.identity && state.identity.role === 'manager' ? 'manager' : 'editor';
+    try { localStorage.setItem('ss_tab_' + role, key); } catch(e){}
+  }
+
+  function showGate(){
+    document.getElementById('boot-loading').style.display = 'none';
+    document.getElementById('gate-screen').style.display = 'block';
+    document.getElementById('main-screen').style.display = 'none';
+  }
+
+  function showMain(){
+    document.getElementById('boot-loading').style.display = 'none';
+    document.getElementById('gate-screen').style.display = 'none';
+    document.getElementById('main-screen').style.display = 'block';
+    setupForm();
+    applyRoleUI();
+    buildSections();
+    renderLocBar();
+    tickClock();
+    setInterval(tickClock, 30000);
+    setInterval(tickActiveTakesPanel, 1000);
+
+    resetDueDates();
+    renderEditorManageList();
+    renderPlanList();
+    renderPlansPanel();
+
+    loadProjects().then(function(projects){
+      state.projects = projects;
+      populateProjectSelect();
+    });
+
+    loadStages().then(function(stages){
+      state.stages = stages;
+      populateStageSelect();
+      renderStageManageList();
+    });
+
+    function onEntries(entries){
+      state.entryParts.live = entries;
+      rebuildEntries();
+      state.loading = false;
+      refreshDatalists();
+      renderFeed();
+      renderHeldItems();
+      renderMyHistory();
+
+      if(state.activeTab === 'dashboard'){
+        renderDashboard();
+        populateDashVideoSelect();
+        populateDashEditorSelect();
+        var vsel = document.getElementById('dash-video-select');
+        if(vsel && vsel.value){ renderVideoDetail(vsel.value); }
+        var esel = document.getElementById('dash-editor-select');
+        if(esel && esel.value){ renderEditorDetail(esel.value); }
+        backfillMissingMonths(entries);
+      }
+    }
+
+    // entries logged by an out-of-date copy of the app have no `month` yet: fix them up
+    function backfillMissingMonths(entries){
+      if(state.backfilledOnce){ return; }
+      var missing = entries.filter(function(e){ return !e.month && e.date; });
+      if(!missing.length){ return; }
+      state.backfilledOnce = true;
+      var batch = db.batch();
+      missing.slice(0, 400).forEach(function(e){
+        batch.set(db.collection('entries').doc(e.id), { month: e.date.slice(0, 7) }, { merge: true });
+      });
+      batch.commit().catch(function(){});
+    }
+
+    var entryOpts = state.identity.role === 'editor'
+      ? { editor: state.identity.name, month: todayStr().slice(0, 7) }
+      : { since: entryWindowStart() };
+    migrateEntryMonths(state.identity.role, state.identity.name).then(function(){
+      watchEntries(onEntries, entryOpts);
+      if(state.identity.role === 'manager'){
+        // read after the one-time tidy-up so a first-ever load sees the freshly built index
+        db.collection('config').doc('videoIndex').get().then(function(doc){
+          state.videoIndex = (doc.exists && doc.data().list) || [];
+          populateDashVideoSelect();
+        }).catch(function(){});
+      }
+    });
+
+    // only locks touched in the last few hours matter (older ones are ignored anyway)
+    var lockCutoff = new Date(Date.now() - LOCK_TTL_MS).toISOString();
+    watchQueryMap(db.collection('locks').where('lastActiveAt', '>=', lockCutoff), function(locks){
+      state.locks = locks;
+      checkVideoLock();
+    });
+
+    watchCollection('activeTakes', function(activeTakes){
+      state.allActiveTakes = activeTakes;
+      state.takesLoaded = true;
+
+      if(state.identity.role === 'editor'){
+        var mine = activeTakes[state.identity.name];
+        var wasActive = !!state.activeTake;
+        if(mine && !wasActive){
+          state.activeTake = mine;
+          enterActiveTakeUI();
+        } else if(mine && wasActive){
+          // Keep paused/timer state in sync without touching the notes field,
+          // so an in-progress typed note never gets overwritten by a stale sync.
+          state.activeTake = mine;
+          var pb = document.getElementById('pause-banner');
+          var pbtn = document.getElementById('pause-btn');
+          if(pb && pbtn){
+            pb.style.display = mine.paused ? 'block' : 'none';
+            pbtn.style.display = mine.paused ? 'none' : 'inline-block';
+          }
+        } else if(!mine && wasActive){
+          state.activeTake = null;
+          exitActiveTakeUI();
+        }
+      }
+
+      if(state.activeTab === 'dashboard'){
+        renderActiveTakesPanel();
+        renderPlansPanel();
+      } else {
+        renderPlanList();
+      }
+    });
+
+    // Plans are loaded as small, separate queries (open items, plus today's finished /
+    // removed ones) instead of the whole history, and merged into state.plans.
+    var planDay = todayStr();
+    state.planParts = {};
+    function setPlanPart(name, map){
+      state.planParts[name] = map;
+      var merged = {};
+      ['open', 'doneToday', 'droppedToday'].forEach(function(k){
+        if(state.planParts[k]){ Object.assign(merged, state.planParts[k]); }
+      });
+      state.plans = merged;
+      if(state.activeTab === 'dashboard'){
+        renderPlansPanel();
+      } else {
+        renderPlanList();
+        refreshDatalists();
+      }
+    }
+    var plansCol = db.collection('plans');
+    if(state.identity.role === 'editor'){
+      var meName = state.identity.name;
+      watchQueryMap(plansCol.where('editor', '==', meName).where('status', '==', 'todo'), function(m){ setPlanPart('open', m); });
+      watchQueryMap(plansCol.where('editor', '==', meName).where('doneDate', '==', planDay), function(m){ setPlanPart('doneToday', m); });
+    } else {
+      watchQueryMap(plansCol.where('status', '==', 'todo'), function(m){ setPlanPart('open', m); });
+      watchQueryMap(plansCol.where('doneDate', '==', planDay), function(m){ setPlanPart('doneToday', m); });
+      watchQueryMap(plansCol.where('droppedDate', '==', planDay), function(m){ setPlanPart('droppedToday', m); });
+    }
+
+    // keep "overdue" flags fresh without needing any other activity
+    setInterval(function(){
+      if(state.activeTab === 'dashboard'){ renderPlansPanel(); } else { renderPlanList(); }
+    }, 60000);
+  }
+
+  /* ---------- init ---------- */
+  function populateRoster(){
+    var ls = document.getElementById('gate-manager-name');
+    if(ls){
+      var leads = state.leads && state.leads.length ? state.leads : [MANAGER_NAME];
+      ls.innerHTML = leads.map(function(n){ return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
+      ls.style.display = leads.length > 1 ? '' : 'none';
+    }
+    var sel = document.getElementById('gate-editor-name');
+    sel.innerHTML = '<option value="" disabled selected>Select your name…</option>';
+    Object.keys(state.credentials.editors).forEach(function(n){
+      var opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      sel.appendChild(opt);
+    });
+  }
+
+  if(!firebaseReady){
+    document.getElementById('boot-loading').style.display = 'none';
+    document.getElementById('gate-screen').style.display = 'block';
+    document.getElementById('gate-screen').innerHTML =
+      '<div class="card gate-card">'
+      + '<div class="card-head">Setup needed</div>'
+      + '<div style="font-size:13px;line-height:1.6;color:var(--navy-soft);">'
+      + 'This tracker needs your Firebase project config pasted into <code>FIREBASE_CONFIG</code> near the top of the script. '
+      + 'Create a free Firebase project, add a Web app, enable Firestore, and paste the config object shown in Project settings → General → Your apps.'
+      + '</div></div>';
+  } else {
+    ensureAuth().then(function(){
+      return loadCredentials();
+    }).then(function(creds){
+      state.credentials = creds;
+      populateRoster();
+      return loadIdentity();
+    }).then(function(id){
+      // an editor who was renamed by the manager keeps working on this device under the new name
+      var ren = (state.credentials && state.credentials.renamed) || {};
+      var hops = 0;
+      while(id && id.role === 'editor' && id.name && ren[id.name] && hops++ < 10){ id.name = ren[id.name]; saveIdentity(id); }
+      if(!id || !id.name || !state.migrated){ showGate(); return; }
+      // the device must still have a valid session (password checked by the database rules)
+      return loadSession().then(function(sess){
+        var ok = sess && sess.role === id.role && sess.name === id.name && (id.role !== 'editor' || state.credentials.editors.hasOwnProperty(id.name));
+        if(!ok){ clearIdentity(); showGate(); return; }
+        if(id.role === 'editor'){ state.credentials.editors[id.name] = sess.pin; state.identity = id; showMain(); return; }
+        return loadAccessForManager().then(function(){ state.identity = id; showMain(); });
+      });
+    }).catch(function(err){
+      console.error('Sign-in failed:', err);
+      showGate();
+      var t = String(err && (err.code || err.message) || err);
+      document.getElementById('gate-error').textContent = /operation-not-allowed|admin-restricted/i.test(t)
+        ? 'Anonymous sign-in is turned off in Firebase. In the Firebase console: Authentication › Sign-in method › Anonymous › Enable.'
+        : "Couldn't connect to SS Tracker (" + t.slice(0, 120) + "). Check your connection and reload.";
+    });
+  }
+})();
+</script>
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('./sw.js').catch(function(){});
+    });
+  }
+</script>
+</body>
+</html>
