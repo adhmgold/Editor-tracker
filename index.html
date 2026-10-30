@@ -3450,7 +3450,7 @@
     if(trTab){ showSection(trTab.getAttribute('data-tr-tab')); window.scrollTo(0, 0); return; }
     if(e.target.closest('#open-control-room') || e.target.closest('#open-control-room-tab')){
       var cr = document.getElementById('control-room'), fr = document.getElementById('cr-frame');
-      if(fr.getAttribute('src') === 'about:blank'){ fr.setAttribute('src', CONTROL_ROOM_URL); }
+      if(fr.getAttribute('src') === 'about:blank'){ fr.setAttribute('src', CONTROL_ROOM_URL + '&t=' + Date.now()); }   // always the latest Control Room, never an old saved copy
       document.getElementById('cr-sub').textContent = 'Signed in as ' + state.identity.name + (state.identity.role === 'manager' ? ' (lead)' : '');
       cr.style.display = 'flex'; document.body.style.overflow = 'hidden';
       return;
