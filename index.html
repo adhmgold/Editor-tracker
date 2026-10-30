@@ -422,6 +422,13 @@
   .car-ready{display:inline-block;background:#DEF3EA;color:#0E7A56;font-weight:700;font-size:12px;padding:2px 9px;border-radius:99px;}
   .car-unl{list-style:none;padding:0;margin:10px 0 0;font-size:12.5px;display:grid;gap:4px;color:var(--navy-faint);}
   .car-unl li.on{color:var(--navy);}
+  /* arrange */
+  .card.tr-arranging{position:relative;outline:2px dashed var(--indigo);outline-offset:3px;}
+  .card.tr-arranging > .card-head{padding-right:112px;}
+  .tr-arr-ctl{position:absolute;top:10px;right:10px;display:flex;gap:4px;z-index:5;}
+  .tr-arr-ctl button{width:30px;height:30px;border-radius:8px;border:2px solid var(--navy);background:#FFC700;font-weight:800;cursor:pointer;}
+  .tr-arr-ctl button:hover{background:var(--indigo);color:#fff;}
+  #panel-log #take-active{order:-100;}
 </style>
 </head>
 <body>
@@ -3703,9 +3710,65 @@
     if(!tabs.some(function(t){ return t[0] === cur; })){ cur = tabs[0][0]; }
     var nav = document.getElementById('tr-tabs');
     nav.innerHTML = tabs.map(function(t){ return '<button type="button" class="tab-btn' + (t[0] === cur ? ' active' : '') + '" data-tr-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('')
-      + '<button type="button" class="tab-btn ext" id="open-control-room-tab">Control Room ↗</button>';
+      + '<button type="button" class="tab-btn ext" id="open-control-room-tab">Control Room ↗</button>'
+      + '<button type="button" class="tab-btn ext tr-arr-btn" id="tr-arrange" title="Move the boxes of this page up and down">' + (state.trArrange ? '✓ Done' : '↕ Arrange') + '</button>';
     showSection(cur);
+    applyTrLayout();
   }
+  /* ---------- arrange: move the boxes up / down (saved on this device, per login type) ---------- */
+  function trLayoutKey(){ return 'ss_layout_' + (state.identity ? state.identity.role : 'x'); }
+  function trLayout(){ try { return JSON.parse(localStorage.getItem(trLayoutKey()) || '{}') || {}; } catch(e){ return state.trLayoutMem || {}; } }
+  function saveTrLayout(L){ state.trLayoutMem = L; try { localStorage.setItem(trLayoutKey(), JSON.stringify(L)); } catch(e){} }
+  function trBoxKey(el){
+    if(el.id){ return el.id; }
+    var h = el.querySelector('.card-head');
+    return h ? 'h:' + h.textContent.replace(/[·(].*$/, '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 40) : '';
+  }
+  function trContainers(){
+    var out = [];
+    var log = document.getElementById('panel-log'); if(log){ out.push({ key: 'log', el: log }); }
+    document.querySelectorAll('#panel-dashboard .grp').forEach(function(g){ out.push({ key: 'grp:' + g.getAttribute('data-grp'), el: g }); });
+    return out;
+  }
+  function applyTrLayout(){
+    var L = trLayout();
+    trContainers().forEach(function(c){
+      var order = L[c.key] || [];
+      Array.prototype.slice.call(c.el.children).forEach(function(box, i){
+        var k = trBoxKey(box);
+        if(box.id === 'take-active'){ box.style.order = '-100'; return; }   // a running take always stays on top
+        var at = k ? order.indexOf(k) : -1;
+        box.style.order = String(at >= 0 ? at : (box.id === 'plan-card' ? 999 : 1000 + i));   // Today's plan stays first by default
+        var ctl = box.querySelector(':scope > .tr-arr-ctl');
+        var can = state.trArrange && k && box.classList.contains('card');
+        if(can && !ctl){
+          ctl = document.createElement('div'); ctl.className = 'tr-arr-ctl';
+          ctl.innerHTML = '<button type="button" data-tr-arr="-1" title="Move up">▲</button><button type="button" data-tr-arr="1" title="Move down">▼</button><button type="button" data-tr-arr="top" title="Move to the top">⤒</button>';
+          box.insertBefore(ctl, box.firstChild);
+        } else if(!can && ctl){ ctl.remove(); }
+        box.classList.toggle('tr-arranging', !!can);
+      });
+    });
+    var b = document.getElementById('tr-arrange'); if(b){ b.textContent = state.trArrange ? '✓ Done' : '↕ Arrange'; }
+  }
+  function moveTrBox(btn){
+    var box = btn.closest('.card'), cont = box && box.parentElement;
+    var c = trContainers().filter(function(x){ return x.el === cont; })[0]; if(!c){ return; }
+    var list = Array.prototype.slice.call(cont.children).filter(function(x){ return trBoxKey(x) && x.id !== 'take-active'; })
+      .sort(function(a, b2){ return (Number(a.style.order) || 0) - (Number(b2.style.order) || 0); }).map(trBoxKey);
+    var k = trBoxKey(box), i = list.indexOf(k); if(i < 0){ return; }
+    list.splice(i, 1);
+    var d = btn.getAttribute('data-tr-arr'), j = d === 'top' ? 0 : Math.max(0, Math.min(list.length, i + Number(d)));
+    list.splice(j, 0, k);
+    var L = trLayout(); L[c.key] = list; saveTrLayout(L);
+    applyTrLayout();
+    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  document.addEventListener('click', function(e){
+    if(e.target.closest('#tr-arrange')){ state.trArrange = !state.trArrange; applyTrLayout(); return; }
+    var b = e.target.closest('[data-tr-arr]'); if(b){ e.preventDefault(); moveTrBox(b); }
+  });
+
   function showSection(key){
     document.querySelectorAll('#tr-tabs [data-tr-tab]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-tr-tab') === key); });
     if(state.identity && state.identity.role === 'editor'){
