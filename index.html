@@ -400,6 +400,28 @@
   .loc-btn{font:800 13px var(--font-display);border:2px solid var(--line);background:var(--cream);color:var(--navy);border-radius:99px;padding:6px 14px;cursor:pointer}
   .loc-btn.on{background:var(--yellow);border-color:var(--navy)}
   .loc-msg{font-size:12px;color:var(--red);font-weight:600}
+  /* career ladder */
+  body.career-no-own #take-setup{display:none !important;}
+  #panel-dashboard.team-view .card{display:none;}
+  #panel-dashboard.team-view #assign-card, #panel-dashboard.team-view #sendback-card{display:block;}
+  .ladder{display:flex;list-style:none;margin:4px 0 14px;padding:0;overflow-x:auto;}
+  .ladder li{flex:1;min-width:78px;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;font-size:11.5px;color:var(--navy-faint);text-align:center;}
+  .ladder li::before{content:"";position:absolute;top:14px;left:-50%;width:100%;height:3px;background:var(--line);}
+  .ladder li:first-child::before{display:none;}
+  .ladder li.past::before,.ladder li.now::before{background:var(--teal);}
+  .lad-dot{position:relative;z-index:1;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:12px;background:#fff;border:2px solid var(--line);}
+  .ladder li.past .lad-dot{background:var(--teal);border-color:var(--teal);color:#fff;}
+  .ladder li.now .lad-dot{background:var(--indigo);border-color:var(--navy);color:#fff;transform:scale(1.15);}
+  .ladder li.now span:last-child{color:var(--navy);font-weight:800;}
+  .car-bar{height:14px;border-radius:99px;background:var(--line);border:2px solid var(--navy);overflow:hidden;margin:6px 0;}
+  .car-bar span{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--indigo));}
+  .car-meta{font-size:12px;color:var(--navy-faint);}
+  .car-months{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+  .car-m{font-size:10px;padding:2px 6px;border-radius:7px;background:var(--line);color:var(--navy-faint);}
+  .car-m.up{background:#DEF3EA;color:#0E7A56;} .car-m.down{background:#FCE1E7;color:#C8002F;} .car-m.same{background:#FFE6D8;color:#B8460B;}
+  .car-ready{display:inline-block;background:#DEF3EA;color:#0E7A56;font-weight:700;font-size:12px;padding:2px 9px;border-radius:99px;}
+  .car-unl{list-style:none;padding:0;margin:10px 0 0;font-size:12.5px;display:grid;gap:4px;color:var(--navy-faint);}
+  .car-unl li.on{color:var(--navy);}
 </style>
 </head>
 <body>
@@ -466,6 +488,10 @@
       <button type="button" class="loc-btn" data-loc="office">🏢 Office</button>
       <button type="button" class="loc-btn" data-loc="home">🏠 Home</button>
       <span class="loc-msg" id="loc-msg"></span>
+    </div>
+    <div class="card" id="career-card" style="display:none;">
+      <div class="card-head">My career <span class="plan-count" id="career-level"></span></div>
+      <div id="career-body"></div>
     </div>
     <div class="card" id="plan-card">
       <div class="card-head">Today's plan</div>
@@ -623,7 +649,7 @@
       <div id="plans-overview"><div class="empty-state">Loading…</div></div>
     </div>
 
-    <div class="card" data-group="today">
+    <div class="card" data-group="today" id="assign-card">
       <div class="card-head">Assign a task</div>
       <div class="row2">
         <div class="field">
@@ -2166,7 +2192,7 @@
     var sel = document.getElementById('sb-editor');
     if(!sel || !state.credentials) return;
     var cur = sel.value;
-    sel.innerHTML = '<option value="">All editors</option>' + Object.keys(state.credentials.editors).sort().map(function(n){ return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
+    sel.innerHTML = '<option value="">' + (state.identity && state.identity.role === 'editor' ? 'All my team' : 'All editors') + '</option>' + teamNames().map(function(n){ return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
     sel.value = cur;
   }
   function sbLoad(){
@@ -2184,6 +2210,7 @@
     var ed = document.getElementById('sb-editor').value, q = document.getElementById('sb-search').value.trim().toLowerCase();
     var rows = Object.keys(state.sbDone).map(function(k){ return state.sbDone[k]; })
       .filter(function(p){ return (!ed || p.editor === ed) && (!q || String(p.video || '').toLowerCase().indexOf(q) !== -1); })
+      .filter(function(p){ return !state.identity || state.identity.role !== 'editor' || teamNames().indexOf(p.editor) !== -1; })
       .sort(function(a, b){ return String(b.doneAt || '').localeCompare(String(a.doneAt || '')); });
     if(!rows.length){ list.innerHTML = '<div class="empty-state">No finished tasks match.</div>'; return; }
     list.innerHTML = rows.slice(0, 150).map(function(p){
@@ -2586,6 +2613,7 @@
   }
 
   function addPlanItem(startNow){
+    if(state.identity && state.identity.role === 'editor' && !careerCan(1)){ return; }
     var errEl = document.getElementById('form-error');
     errEl.textContent = '';
 
@@ -2659,7 +2687,7 @@
 
   function populateAssignEditorSelect(){
     if(!state.credentials){ return; }
-    fillSimpleSelect('m-editor', Object.keys(state.credentials.editors).sort(), 'Select editor…');
+    fillSimpleSelect('m-editor', teamNames(), 'Select editor…');
   }
 
   function assignTask(){
@@ -3546,6 +3574,88 @@
   });
 
   /* ---------- role-aware UI ---------- */
+  /* ---------- career ladder (levels are set by Gold in the Control Room › Career) ---------- */
+  var CAREER_DEFAULT = { floor: 60, levels: [
+    { key: 'intern', name: 'Intern', months: 3, target: 70 }, { key: 'junior', name: 'Junior', months: 6, target: 80 },
+    { key: 'mid', name: 'Mid-level', months: 9, target: 85 }, { key: 'senior', name: 'Senior', months: 12, target: 88 },
+    { key: 'lead', name: 'Team Leader', months: 12, target: 90 }, { key: 'manager', name: 'Manager', months: 0, target: 0 } ] };
+  var CAREER_UNLOCKS = [
+    { rank: 1, text: 'Add tasks to your own plan' },
+    { rank: 2, text: 'See the team\'s KPI ranking in the Control Room' },
+    { rank: 3, text: 'Assign tasks to lower levels and send their work back for edits (My team tab)' },
+    { rank: 4, text: 'Lead tools in the Control Room: attendance reviews, task reviews, deadlines, everyone\'s KPI' } ];
+  function careerCfg(){
+    var c = state.careerSettings || {};
+    var lv = (c.levels && c.levels.length === CAREER_DEFAULT.levels.length) ? c.levels : CAREER_DEFAULT.levels;
+    return { floor: c.floor != null && c.floor !== '' ? Number(c.floor) : CAREER_DEFAULT.floor,
+      levels: lv.map(function(l, i){ return Object.assign({}, CAREER_DEFAULT.levels[i], l); }) };
+  }
+  function careerRankOf(name){ var c = (state.career || {})[name]; return c && c.rank != null ? Number(c.rank) : null; }
+  // no level yet = keeps today's access (like Junior)
+  function careerEff(name){ var r = careerRankOf(name); return r == null ? 1 : r; }
+  function careerCan(rank){
+    if(!state.identity){ return false; }
+    if(state.identity.role === 'manager'){ return true; }
+    return careerEff(state.identity.name) >= rank;
+  }
+  /* who this person can assign to / send back: leads everyone; Seniors and up the editors below their level */
+  function teamNames(){
+    var all = state.credentials ? Object.keys(state.credentials.editors).sort() : [];
+    if(!state.identity || state.identity.role !== 'editor'){ return all; }
+    var me = state.identity.name, mine = careerEff(me);
+    return all.filter(function(n){ return n !== me && careerEff(n) < mine; });
+  }
+  function watchCareer(){
+    try { watchCareer_(); } catch(e){ console.error('career', e); }
+  }
+  function watchCareer_(){
+    db.collection('dash_settings').doc('career').onSnapshot(function(d){ state.careerSettings = d.exists ? d.data() : null; applyCareer(); }, function(){});
+    db.collection('dash_career').onSnapshot(function(snap){
+      var m = {}; snap.forEach(function(d){ m[d.id] = d.data(); });
+      state.career = m; applyCareer();
+    }, function(){ state.career = state.career || {}; applyCareer(); });
+  }
+  function applyCareer(){
+    if(!state.identity){ return; }
+    var isEditor = state.identity.role === 'editor';
+    document.body.classList.toggle('career-no-own', isEditor && !careerCan(1));
+    var hadTeam = !!document.querySelector('#tr-tabs [data-tr-tab="team"]');
+    if(isEditor && hadTeam !== careerCan(3)){ buildSections(); }
+    if(isEditor && careerCan(3)){ populateAssignEditorSelect(); sbFill(); }
+    renderCareerCard();
+  }
+  function renderCareerCard(){
+    var card = document.getElementById('career-card');
+    if(!card){ return; }
+    if(!state.identity || state.identity.role !== 'editor'){ card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    var cfg = careerCfg(), me = state.identity.name, c = (state.career || {})[me] || null, r = c && c.rank != null ? Number(c.rank) : null;
+    document.getElementById('career-level').textContent = '· ' + (r == null ? 'not placed yet' : cfg.levels[r].name);
+    var ladder = '<ol class="ladder">' + cfg.levels.map(function(l, i){
+      var cls = r == null ? '' : (i < r ? 'past' : (i === r ? 'now' : ''));
+      return '<li class="' + cls + '"><span class="lad-dot">' + (r != null && i < r ? '✓' : (i + 1)) + '</span><span>' + escapeHtml(l.name) + '</span></li>';
+    }).join('') + '</ol>';
+    var prog = '';
+    if(r == null){
+      prog = '<div class="car-meta">Gold hasn\'t placed you on the ladder yet.</div>';
+    } else if(r >= cfg.levels.length - 1){
+      prog = '<div style="font-weight:800;">Top of the ladder 🏆</div>';
+    } else {
+      var lv = cfg.levels[r], p = c.progress || null, need = p ? p.need : Math.max(1, Number(lv.months) || 1), steps = p ? p.steps : 0;
+      var pct = Math.round(100 * Math.min(steps, need) / need);
+      prog = '<div>Next: <b>' + escapeHtml(cfg.levels[r + 1].name) + '</b>' + (p && p.ready ? ' <span class="car-ready">Ready for promotion — waiting for Gold</span>' : '') + '</div>'
+        + '<div class="car-bar"><span style="width:' + pct + '%"></span></div>'
+        + '<div class="car-meta">' + steps + ' of ' + need + ' good months · a month counts when your KPI is ' + (Number(lv.target) || 0) + '% or more · under ' + cfg.floor + '% takes one back</div>'
+        + (p && p.months && p.months.length ? '<div class="car-months">' + p.months.map(function(x){ return '<span class="car-m ' + x.res + '">' + escapeHtml(x.m.slice(5) + '/' + x.m.slice(2, 4)) + ' · ' + (x.score == null ? '—' : x.score + '%') + '</span>'; }).join('') + '</div>' : '');
+    }
+    var eff = r == null ? 1 : r;
+    var unl = '<ul class="car-unl">' + CAREER_UNLOCKS.map(function(u){
+      return '<li class="' + (eff >= u.rank ? 'on' : '') + '">' + (eff >= u.rank ? '✓ ' : '🔒 ') + escapeHtml(u.text) + ' <span class="car-meta">(' + escapeHtml(cfg.levels[u.rank].name) + '+)</span></li>';
+    }).join('') + '</ul>';
+    document.getElementById('career-body').innerHTML = ladder + prog + unl
+      + (!careerCan(1) ? '<div class="car-meta" style="margin-top:8px;">As an ' + escapeHtml(cfg.levels[0].name) + ' you work on the tasks assigned to you.</div>' : '');
+  }
+
   function applyRoleUI(){
     var isEditor = state.identity.role === 'editor';
     document.getElementById('panel-log').classList.toggle('active', isEditor);
@@ -3572,7 +3682,8 @@
   /* ---------- sections (tab bar, like the Control Room) ---------- */
   var TR_TABS = {
     manager: [['today', 'Today'], ['lookup', 'Look up'], ['reports', 'Reports'], ['manage', 'Manage team']],
-    editor:  [['log', 'My work']]
+    editor:  [['log', 'My work']],
+    senior:  [['log', 'My work'], ['team', 'My team']]
   };
   function buildSections(){
     var panel = document.getElementById('panel-dashboard');
@@ -3587,7 +3698,7 @@
       TR_TABS.manager.forEach(function(t){ panel.appendChild(boxes[t[0]]); });
     }
     var role = state.identity && state.identity.role === 'manager' ? 'manager' : 'editor';
-    var tabs = TR_TABS[role], cur = null;
+    var tabs = role === 'editor' && careerCan(3) ? TR_TABS.senior : TR_TABS[role], cur = null;
     try { cur = localStorage.getItem('ss_tab_' + role); } catch(e){}
     if(!tabs.some(function(t){ return t[0] === cur; })){ cur = tabs[0][0]; }
     var nav = document.getElementById('tr-tabs');
@@ -3597,6 +3708,20 @@
   }
   function showSection(key){
     document.querySelectorAll('#tr-tabs [data-tr-tab]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-tr-tab') === key); });
+    if(state.identity && state.identity.role === 'editor'){
+      // editors: "My work" is their own panel; "My team" (Senior and up) shows assign + send back for lower levels
+      var team = key === 'team';
+      var pd = document.getElementById('panel-dashboard');
+      document.getElementById('panel-log').classList.toggle('active', !team);
+      pd.classList.toggle('active', team);
+      pd.classList.toggle('team-view', team);
+      if(team){
+        document.querySelectorAll('#panel-dashboard .grp').forEach(function(g){ g.classList.toggle('on', g.getAttribute('data-grp') === 'today'); });
+        populateAssignEditorSelect(); sbFill();
+      }
+      try { localStorage.setItem('ss_tab_editor', key); } catch(e){}
+      return;
+    }
     document.querySelectorAll('#panel-dashboard .grp').forEach(function(g){ g.classList.toggle('on', g.getAttribute('data-grp') === key); });
     var role = state.identity && state.identity.role === 'manager' ? 'manager' : 'editor';
     try { localStorage.setItem('ss_tab_' + role, key); } catch(e){}
@@ -3753,6 +3878,8 @@
       watchQueryMap(plansCol.where('doneDate', '==', planDay), function(m){ setPlanPart('doneToday', m); });
       watchQueryMap(plansCol.where('droppedDate', '==', planDay), function(m){ setPlanPart('droppedToday', m); });
     }
+
+    watchCareer();
 
     // keep "overdue" flags fresh without needing any other activity
     setInterval(function(){
